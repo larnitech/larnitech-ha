@@ -70,15 +70,19 @@ class LarnitechEntity(Entity):
     """One Larnitech element (addr) shown as one HA device with suggested area."""
 
     _attr_should_poll = False
+    # for a second entity of the same element (a script's switch next to its button)
+    _unique_suffix = ""
     _attr_has_entity_name = True
-    _attr_name = None
 
     def __init__(self, entry: LarnitechConfigEntry, device: dict[str, Any]) -> None:
+        if self.translation_key is None:
+            # named after its device (the Larnitech element); entities with a translation key add their own name
+            self._attr_name = None
         self._client: LarnitechClient = entry.runtime_data.client
         self._dev = device
         self.addr = str(device["addr"])
         hub = entry.runtime_data.hub_id
-        self._attr_unique_id = f"{hub}_{self.addr}"
+        self._attr_unique_id = f"{hub}_{self.addr}{self._unique_suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{hub}_{self.addr}")},
             name=device.get("name") or self.addr,

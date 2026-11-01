@@ -67,5 +67,12 @@
       "name": "Reload elements",
       "description": "Reload the element list from the controller (after editing the project in LT Setup)."
     }
+  },
+  "entity": {
+    "switch": {
+      "script_active": {
+        "name": "Active"
+      }
+    }
   }
 }

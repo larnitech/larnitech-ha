@@ -67,5 +67,12 @@
       "name": "Elemente neu laden",
       "description": "Elementliste neu vom Controller laden (nach Änderungen am Projekt in LT Setup)."
     }
+  },
+  "entity": {
+    "switch": {
+      "script_active": {
+        "name": "Aktiv"
+      }
+    }
   }
 }
