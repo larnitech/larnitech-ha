@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Контроллер Larnitech",
+        "description": "Подключение к контроллеру Larnitech через локальный API (API2). Ключ есть в LT Setup → Плагины → Home Assistant (или Безопасность → Показать ключ API).",
+        "data": {
+          "host": "Адрес",
+          "port": "Порт",
+          "key": "Ключ API"
+        },
+        "data_description": {
+          "host": "IP-адрес контроллера, например 192.168.1.111, или СЕРИЙНЫЙ.in.larnitech.com для удалённого доступа",
+          "port": "2041 в локальной сети, 8443 для удалённого доступа через in.larnitech.com",
+          "key": "Ключ API из LT Setup"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Обновить ключ API",
+        "description": "Контроллер не принял ключ API. Введите текущий ключ из LT Setup.",
+        "data": {
+          "key": "Ключ API"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться к контроллеру. Проверьте адрес, порт и что API включён.",
+      "invalid_auth": "Контроллер не принял ключ API.",
+      "unknown": "Непредвиденная ошибка"
+    },
+    "abort": {
+      "already_configured": "Этот контроллер уже добавлен.",
+      "reauth_successful": "Ключ API обновлён."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки Larnitech",
+        "data": {
+          "ignored_types": "Скрыть типы элементов",
+          "export_entities": "Устройства Home Assistant в Larnitech"
+        },
+        "data_description": {
+          "ignored_types": "Элементы этих типов не добавляются в Home Assistant.",
+          "export_entities": "Эти сущности станут элементами Larnitech: появятся в приложении Larnitech, и их можно использовать в сценариях и Blockly. Команды из Larnitech управляют ими здесь."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_status": {
+      "name": "Задать статус",
+      "description": "Отправить статус элементу Larnitech напрямую.",
+      "fields": {
+        "addr": {
+          "name": "Адрес",
+          "description": "Адрес элемента, например 585:17"
+        },
+        "status": {
+          "name": "Статус",
+          "description": "Объект статуса, например {\"state\": \"on\", \"level\": 50}"
+        }
+      }
+    },
+    "reload_devices": {
+      "name": "Перечитать элементы",
+      "description": "Заново загрузить список элементов с контроллера (после изменения проекта в LT Setup)."
+    }
+  }
+}

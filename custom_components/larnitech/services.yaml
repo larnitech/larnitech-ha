@@ -1,0 +1,13 @@
+set_status:
+  fields:
+    addr:
+      required: true
+      example: "585:17"
+      selector:
+        text:
+    status:
+      required: true
+      example: '{"state": "on", "level": 50}'
+      selector:
+        object:
+reload_devices:

@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Larnitech controller",
+        "description": "Connect to a Larnitech controller over its local API (API2). The key is in LT Setup → Plugins → Home Assistant (or Security → Show API key).",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "key": "API key"
+        },
+        "data_description": {
+          "host": "IP address of the controller, e.g. 192.168.1.111, or SERIAL.in.larnitech.com for remote access",
+          "port": "2041 on the local network, 8443 for remote access via in.larnitech.com",
+          "key": "API key from LT Setup"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update API key",
+        "description": "The controller rejected the API key. Enter the current key from LT Setup.",
+        "data": {
+          "key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the controller. Check address, port and that the API is enabled.",
+      "invalid_auth": "The controller rejected the API key.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This controller is already added.",
+      "reauth_successful": "API key updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Larnitech options",
+        "data": {
+          "ignored_types": "Hide element types",
+          "export_entities": "Home Assistant devices in Larnitech"
+        },
+        "data_description": {
+          "ignored_types": "Elements of these types are not added to Home Assistant.",
+          "export_entities": "These entities become Larnitech elements: they appear in the Larnitech app and can be used in Larnitech scripts and Blockly. Commands from Larnitech control them here."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_status": {
+      "name": "Set status",
+      "description": "Send a raw status to a Larnitech element.",
+      "fields": {
+        "addr": {
+          "name": "Address",
+          "description": "Element address, e.g. 585:17"
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status object, e.g. {\"state\": \"on\", \"level\": 50}"
+        }
+      }
+    },
+    "reload_devices": {
+      "name": "Reload elements",
+      "description": "Reload the element list from the controller (after editing the project in LT Setup)."
+    }
+  }
+}

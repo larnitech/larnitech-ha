@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Larnitech-Controller",
+        "description": "Verbindung zu einem Larnitech-Controller über die lokale API (API2). Den Schlüssel finden Sie in LT Setup → Plugins → Home Assistant (oder Sicherheit → API-Schlüssel anzeigen).",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "key": "API-Schlüssel"
+        },
+        "data_description": {
+          "host": "IP-Adresse des Controllers, z. B. 192.168.1.111, oder SERIENNR.in.larnitech.com für Fernzugriff",
+          "port": "2041 im lokalen Netz, 8443 für Fernzugriff über in.larnitech.com",
+          "key": "API-Schlüssel aus LT Setup"
+        }
+      },
+      "reauth_confirm": {
+        "title": "API-Schlüssel aktualisieren",
+        "description": "Der Controller hat den API-Schlüssel abgelehnt. Geben Sie den aktuellen Schlüssel aus LT Setup ein.",
+        "data": {
+          "key": "API-Schlüssel"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Keine Verbindung zum Controller. Adresse, Port und aktivierte API prüfen.",
+      "invalid_auth": "Der Controller hat den API-Schlüssel abgelehnt.",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Dieser Controller ist bereits hinzugefügt.",
+      "reauth_successful": "API-Schlüssel aktualisiert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Larnitech-Optionen",
+        "data": {
+          "ignored_types": "Elementtypen ausblenden",
+          "export_entities": "Home-Assistant-Geräte in Larnitech"
+        },
+        "data_description": {
+          "ignored_types": "Elemente dieser Typen werden nicht in Home Assistant angelegt.",
+          "export_entities": "Diese Entitäten werden zu Larnitech-Elementen: Sie erscheinen in der Larnitech-App und können in Larnitech-Skripten und Blockly verwendet werden. Befehle aus Larnitech steuern sie hier."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_status": {
+      "name": "Status setzen",
+      "description": "Einen Rohstatus an ein Larnitech-Element senden.",
+      "fields": {
+        "addr": {
+          "name": "Adresse",
+          "description": "Elementadresse, z. B. 585:17"
+        },
+        "status": {
+          "name": "Status",
+          "description": "Statusobjekt, z. B. {\"state\": \"on\", \"level\": 50}"
+        }
+      }
+    },
+    "reload_devices": {
+      "name": "Elemente neu laden",
+      "description": "Elementliste neu vom Controller laden (nach Änderungen am Projekt in LT Setup)."
+    }
+  }
+}
