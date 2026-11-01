@@ -17,6 +17,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
+from .entity import is_own, kind_of
 from .const import CONF_EXPORT_ENTITIES, CONF_IGNORED_TYPES, CONF_KEY, CONF_SERIAL, DEFAULT_PORT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,7 +125,7 @@ class LarnitechOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
         client = self.config_entry.runtime_data.client
-        types = sorted({str(d.get("type")) for d in client.devices.values() if d.get("type") and not d.get("ha-owned")})
+        types = sorted({kind_of(d) for d in client.devices.values() if d.get("type") and not is_own(d)})
         current = self.config_entry.options.get(CONF_IGNORED_TYPES, [])
         exported = self.config_entry.options.get(CONF_EXPORT_ENTITIES, [])
         schema = vol.Schema(

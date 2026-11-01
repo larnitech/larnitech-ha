@@ -14,16 +14,24 @@ import logging
 import re
 from typing import Any
 
-from homeassistant.const import ATTR_DEVICE_CLASS, ATTR_FRIENDLY_NAME, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.const import (
+    ATTR_DEVICE_CLASS,
+    ATTR_FRIENDLY_NAME,
+    EVENT_HOMEASSISTANT_STARTED,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
+from homeassistant.core import CoreState, Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.storage import Store
 
 from .api import LarnitechClient, LarnitechError
-from .const import APP_ID
+from .const import APP_ID, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 CREATED_TIMEOUT = 8
+STORE_VERSION = 1
 
 
 def _hex(values: list[int]) -> str:
@@ -91,6 +99,18 @@ def larnitech_type(state: State) -> str | None:
     return None
 
 
+def _fan_code(fan_mode: Any) -> int:
+    """Larnitech fan byte: off 0, low 1, medium 2, high 3, on 4, auto 5 (also for names like on_high)."""
+    f = str(fan_mode or "auto").lower()
+    exact = {"off": 0, "low": 1, "medium": 2, "middle": 2, "mid": 2, "high": 3, "on": 4, "auto": 5}
+    if f in exact:
+        return exact[f]
+    for word, code in (("high", 3), ("max", 3), ("strong", 3), ("med", 2), ("mid", 2), ("low", 1), ("min", 1), ("quiet", 1), ("auto", 5)):
+        if word in f:
+            return code
+    return 5
+
+
 def encode(kind: str, state: State) -> str | None:
     """Current entity state as the Larnitech hex status for that element type."""
     if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
@@ -129,7 +149,7 @@ def encode(kind: str, state: State) -> str | None:
         cur = _num(a.get("current_temperature")) or 0
         cool = _num(a.get("target_temp_high")) or target
         mode = {"off": 0, "heat": 1, "cool": 2}.get(s, 3)
-        fan = {"off": 0, "low": 1, "medium": 2, "middle": 2, "high": 3, "on": 4, "auto": 5}.get(str(a.get("fan_mode", "auto")).lower(), 5)
+        fan = _fan_code(a.get("fan_mode"))
         return _hex([0 if s == "off" else 1, mode, round(target), round(cur), round(cool), fan])
     value = _num(s)
     if kind == "temperature-sensor":
@@ -194,12 +214,19 @@ def decode(kind: str, state: State, hexstatus: str) -> list[tuple[str, str, dict
         mode = {1: "heat", 2: "cool"}.get(b[1]) or ("heat_cool" if "heat_cool" in modes else "auto")
         if mode not in modes and modes:
             mode = next((m for m in modes if m != "off"), mode)
-        calls = [("climate", "set_temperature", {**eid, "hvac_mode": mode, "temperature": b[2]})]
+        if mode == "heat_cool" and state.attributes.get("target_temp_low") is not None:
+            temps = {"target_temp_low": b[2], "target_temp_high": max(b[4], b[2])}
+        else:
+            temps = {"temperature": b[4] if mode == "cool" else b[2]}
+        calls = [("climate", "set_temperature", {**eid, "hvac_mode": mode, **temps})]
         fan_modes = state.attributes.get("fan_modes") or []
-        fan = ["off", "low", "medium", "high", "on", "auto"][min(b[5], 5)]
-        if fan == "medium" and fan not in fan_modes and "middle" in fan_modes:
-            fan = "middle"
-        if fan in fan_modes:
+        wanted = min(b[5], 5)
+        fan = next((f for f in fan_modes if str(f).lower() == ["off", "low", "medium", "high", "on", "auto"][wanted]), None)
+        if fan is None and wanted == 2:
+            fan = next((f for f in fan_modes if str(f).lower() == "middle"), None)
+        if fan is None:
+            fan = next((f for f in fan_modes if _fan_code(f) == wanted), None)
+        if fan is not None and fan != state.attributes.get("fan_mode"):
             calls.append(("climate", "set_fan_mode", {**eid, "fan_mode": fan}))
         return calls
     return []
@@ -212,10 +239,17 @@ def addr_key(entity_id: str) -> str:
 class EntityBridge:
     """Registers selected HA entities on the controller and keeps them in sync."""
 
-    def __init__(self, hass: HomeAssistant, client: LarnitechClient, entity_ids: list[str]) -> None:
+    def __init__(self, hass: HomeAssistant, client: LarnitechClient, entry_id: str, entity_ids: list[str]) -> None:
         self.hass = hass
         self.client = client
         self.entity_ids = list(entity_ids)
+        # what each entity was registered as. The registration is always the complete set, so an
+        # entity that is missing for a moment (its integration still loading) must still be sent,
+        # or the controller would delete its element and break the scripts that use it.
+        self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, f"{DOMAIN}.{entry_id}.exported")
+        self._known: dict[str, dict[str, str]] = {}  # entity_id -> {"type": ..., "name": ...}
+        self._started = asyncio.Event()
+        self._unsub_started = None
         self.kinds: dict[str, str] = {}  # addr-key -> larnitech type
         self.entities: dict[str, str] = {}  # addr-key -> entity_id
         self.addrs: dict[str, str] = {}  # addr-key -> controller address
@@ -224,13 +258,33 @@ class EntityBridge:
         self._last: dict[str, str] = {}
         self._unsubs: list = []
 
+    @staticmethod
+    async def async_forget(hass: HomeAssistant, entry_id: str) -> None:
+        await Store(hass, STORE_VERSION, f"{DOMAIN}.{entry_id}.exported").async_remove()
+
     async def async_start(self) -> None:
+        self._known = (await self._store.async_load() or {}).get("entities", {})
+        if self.hass.state is CoreState.running:
+            self._started.set()
+        else:
+            @callback
+            def _on_started(_event: Event) -> None:
+                self._unsub_started = None
+                self._started.set()
+                # entities of integrations loaded after us exist now: register them with real names and states
+                if self.client.connected and self.entity_ids:
+                    self.hass.async_create_task(self._on_session())
+
+            self._unsub_started = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_started)
         self._unsubs.append(self.client.add_plugin_listener(self._on_plugin_message))
         self._unsubs.append(self.client.add_session_listener(self._on_session))
         if self.entity_ids:
             self._unsubs.append(async_track_state_change_event(self.hass, self.entity_ids, self._on_state))
 
     async def async_stop(self) -> None:
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
@@ -241,23 +295,51 @@ class EntityBridge:
 
     async def _on_session(self) -> None:
         """After every (re)authorization: announce the plugin and register the full set."""
+        if not self._started.is_set():
+            # during Home Assistant start-up other integrations may not have created their entities
+            # yet; registering now could delete their elements. _on_started registers instead.
+            return
         self._created.clear()
         self._last.clear()
         entries = []
         self.kinds.clear()
         self.entities.clear()
+        changed = False
         for eid in self.entity_ids:
             state = self.hass.states.get(eid)
-            if state is None:
-                continue
-            kind = larnitech_type(state)
+            known = self._known.get(eid)
+            usable = state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+            # keep the type an element was created with: changing it would recreate the element
+            kind = known["type"] if known else (larnitech_type(state) if state is not None else None)
             if kind is None:
-                self.errors[eid] = "unsupported"
+                if state is not None:
+                    if self.errors.get(eid) != "unsupported":
+                        _LOGGER.warning("%s cannot become a Larnitech element (unsupported kind of entity)", eid)
+                    self.errors[eid] = "unsupported"
+                    _LOGGER.debug("%s cannot become a Larnitech element (unsupported kind of entity)", eid)
+                elif not self._started.is_set():
+                    pass  # not loaded yet; registered once Home Assistant has started
+                else:
+                    self.errors[eid] = "not found"
                 continue
+            name = str(state.attributes.get(ATTR_FRIENDLY_NAME) or eid) if usable else (known or {}).get("name", eid)
+            name = name[:60]
+            if known != {"type": kind, "name": name}:
+                self._known[eid] = {"type": kind, "name": name}
+                changed = True
+            self.errors.pop(eid, None)
             key = addr_key(eid)
             self.kinds[key] = kind
             self.entities[key] = eid
-            entries.append({"addr-key": key, "type": kind, "name": str(state.attributes.get(ATTR_FRIENDLY_NAME) or eid)[:60]})
+            entries.append({"addr-key": key, "type": kind, "name": name})
+        for eid in [e for e in self._known if e not in self.entity_ids]:
+            del self._known[eid]
+            changed = True
+        if changed:
+            await self._store.async_save({"entities": self._known})
+        if not entries and not self._started.is_set() and self.entity_ids:
+            # nothing known yet and nothing loaded: do not wipe the controller's elements, wait for start
+            return
         try:
             await self.client.request({"request": "setup", "appId": APP_ID})
             # the list is the complete set: elements registered earlier and missing now are removed
@@ -311,9 +393,11 @@ class EntityBridge:
     async def _reregister(self) -> None:
         entries = []
         for key, kind in self.kinds.items():
-            state = self.hass.states.get(self.entities[key])
-            name = str(state.attributes.get(ATTR_FRIENDLY_NAME) or self.entities[key]) if state else self.entities[key]
-            entries.append({"addr-key": key, "type": kind, "name": name[:60]})
+            eid = self.entities[key]
+            name = self._known.get(eid, {}).get("name", eid)
+            self._known[eid] = {"type": kind, "name": name}
+            entries.append({"addr-key": key, "type": kind, "name": name})
+        await self._store.async_save({"entities": self._known})
         try:
             await self.client.request({"request": "she-register-pnp", "pnp": entries})
         except LarnitechError as err:

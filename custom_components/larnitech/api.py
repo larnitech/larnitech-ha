@@ -56,11 +56,18 @@ class LarnitechClient:
         self._runner: asyncio.Task | None = None
         self._closing = False
         self._refresh_pending: set[str] = set()
+        self._tasks: set[asyncio.Task] = set()
         self.devices: dict[str, dict[str, Any]] = {}
         # addresses of elements this integration created for Home Assistant entities
         self.owned: set[str] = set()
         self.connected = False
-        self._status_listeners: list[Callable[[str, dict[str, Any]], None]] = []
+        # cb(addr, status, source); source: "push" (controller event), "command" (our own
+        # optimistic update) or "reload" (full re-read after a reconnect)
+        self._status_listeners: list[Callable[[str, dict[str, Any], str], None]] = []
+        # called with the set of new element addresses when a reconnect finds elements that were not there
+        self._new_devices_listeners: list[Callable[[set[str]], None]] = []
+        # called when the controller stops accepting the key (it was changed in LT Setup)
+        self.on_auth_failed: Callable[[], None] | None = None
         self._conn_listeners: list[Callable[[bool], None]] = []
         # plugin API (Home Assistant entities registered as Larnitech elements)
         self._plugin_listeners: list[Callable[[dict[str, Any]], None]] = []
@@ -73,7 +80,11 @@ class LarnitechClient:
         return f"{scheme}://{self.host}:{self.port}/api"
 
     # ---- listeners -------------------------------------------------------
-    def add_status_listener(self, cb: Callable[[str, dict[str, Any]], None]) -> Callable[[], None]:
+    def add_new_devices_listener(self, cb: Callable[[set[str]], None]) -> Callable[[], None]:
+        self._new_devices_listeners.append(cb)
+        return lambda: self._new_devices_listeners.remove(cb)
+
+    def add_status_listener(self, cb: Callable[[str, dict[str, Any], str], None]) -> Callable[[], None]:
         self._status_listeners.append(cb)
         return lambda: self._status_listeners.remove(cb)
 
@@ -118,7 +129,12 @@ class LarnitechClient:
             raise LarnitechAuthError(_error_text(reply))
         self._set_connected(True)
         for cb in list(self._session_listeners):
-            await cb()
+            try:
+                await cb()
+            except LarnitechError:
+                raise
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Larnitech session hook failed")
 
     async def start(self) -> None:
         """Connect, load devices, subscribe, keep the link alive in background."""
@@ -159,6 +175,12 @@ class LarnitechClient:
                 await self.subscribe_all()
                 _LOGGER.info("Reconnected to Larnitech controller %s", self.host)
                 delay = RECONNECT_MIN
+            except LarnitechAuthError as err:
+                _LOGGER.warning("Larnitech controller %s rejected the API key: %s", self.host, err)
+                await self._drop()
+                if self.on_auth_failed:
+                    self.on_auth_failed()
+                return
             except LarnitechError as err:
                 _LOGGER.debug("Reconnect to %s failed: %s", self.host, err)
                 await self._drop()
@@ -226,9 +248,9 @@ class LarnitechClient:
                 return
         for dev in devices:
             if isinstance(dev, dict) and "addr" in dev and "status" in dev:
-                self._apply_status(str(dev["addr"]), dev["status"])
+                self._apply_status(str(dev["addr"]), dev["status"], "push")
 
-    def _apply_status(self, addr: str, status: Any) -> None:
+    def _apply_status(self, addr: str, status: Any, source: str) -> None:
         if isinstance(status, str):
             # compact hex status ("0x08"): ask for the readable form
             self._schedule_refresh(addr)
@@ -242,7 +264,7 @@ class LarnitechClient:
         merged.update(status)
         dev["status"] = merged
         for cb in list(self._status_listeners):
-            cb(addr, merged)
+            cb(addr, merged, source)
 
     def _schedule_refresh(self, addr: str) -> None:
         if addr in self._refresh_pending or addr not in self.devices:
@@ -255,7 +277,9 @@ class LarnitechClient:
             with contextlib.suppress(LarnitechError):
                 await self.refresh(addr)
 
-        asyncio.create_task(_do())
+        task = asyncio.create_task(_do())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     # ---- requests --------------------------------------------------------
     async def request(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -266,12 +290,18 @@ class LarnitechClient:
             fut: asyncio.Future = asyncio.get_running_loop().create_future()
             self._pending = (payload["request"], fut)
             try:
-                await ws.send_str(json.dumps(payload, ensure_ascii=False))  # the controller keeps \u escapes literally
+                await ws.send_str(json.dumps(payload, ensure_ascii=False))
                 async with asyncio.timeout(REQUEST_TIMEOUT):
                     return await fut
             except (aiohttp.ClientError, ConnectionResetError) as err:
                 raise LarnitechConnectionError(str(err)) from err
             except TimeoutError as err:
+                # a late reply could be taken for the answer to a later request: start over
+                _LOGGER.warning("No reply to %s from %s, reconnecting", payload["request"], self.host)
+                self._ws = None
+                with contextlib.suppress(Exception):
+                    await ws.close()
+                self._set_connected(False)
                 raise LarnitechConnectionError(f"no reply to {payload['request']}") from err
             finally:
                 self._pending = None
@@ -292,14 +322,20 @@ class LarnitechClient:
             found[addr] = dev
         if self.devices:
             # keep the same dict objects so entities keep their reference
+            new: set[str] = set()
             for addr, dev in found.items():
                 if addr in self.devices:
                     self.devices[addr].clear()
                     self.devices[addr].update(dev)
                     for cb in list(self._status_listeners):
-                        cb(addr, dev["status"])
+                        cb(addr, dev["status"], "reload")
                 else:
                     self.devices[addr] = dev
+                    if not dev.get("ha-owned") and dev.get("plugin") != "home_assistant":
+                        new.add(addr)
+            if new:
+                for cb in list(self._new_devices_listeners):
+                    cb(new)
         else:
             self.devices = found
         return self.devices
@@ -314,7 +350,7 @@ class LarnitechClient:
         reply = await self.request({"request": "status-get", "addr": addr, "status": "detailed"})
         for dev in reply.get("devices") or []:
             if isinstance(dev, dict) and isinstance(dev.get("status"), dict):
-                self._apply_status(str(dev.get("addr", addr)), dev["status"])
+                self._apply_status(str(dev.get("addr", addr)), dev["status"], "push")
 
     async def set_status(self, addr: str, status: dict[str, Any] | str) -> None:
         reply = await self.request({"request": "status-set", "addr": addr, "status": status})
@@ -325,7 +361,7 @@ class LarnitechClient:
                 raise LarnitechError(f"controller refused command for {addr}")
         # optimistic update; the pushed event will confirm it
         if isinstance(status, dict):
-            self._apply_status(addr, status)
+            self._apply_status(addr, status, "command")
 
 
 def _is_error(reply: dict[str, Any]) -> bool:

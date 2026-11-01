@@ -8,10 +8,8 @@ from homeassistant.components.light import (
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
-    ATTR_TRANSITION,
     ColorMode,
     LightEntity,
-    LightEntityFeature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -55,9 +53,30 @@ class LarnitechLight(LarnitechEntity, LightEntity):
         if not modes:
             modes.add(ColorMode.ONOFF)
         self._attr_supported_color_modes = modes
-        if kind in ("dimer-lamp", "dimmer-lamp", "rgb-lamp"):
-            self._attr_supported_features = LightEntityFeature.TRANSITION
-        self._last_mode = next(iter(modes))
+        self._colour_mode = ColorMode.RGB if ColorMode.RGB in modes else ColorMode.HS
+        self._seen = {k: st.get(k) for k in ("hue", "saturation", "r", "g", "b", "color", "rgb", self._ct_key)}
+        self._last_mode = self._mode_from_status(st, modes)
+
+    def _mode_from_status(self, st: dict[str, Any], modes: set[ColorMode]) -> ColorMode:
+        if len(modes) == 1:
+            return next(iter(modes))
+        colour = self._colour_mode in modes
+        if colour and ColorMode.COLOR_TEMP in modes:
+            sat = to_float(st.get("saturation"))
+            has_rgb = any(k in st for k in ("r", "color", "rgb"))
+            return self._colour_mode if (has_rgb or (sat is not None and sat > 0)) else ColorMode.COLOR_TEMP
+        return self._colour_mode if colour else ColorMode.COLOR_TEMP
+
+    def _handle_status(self, status: dict[str, Any], source: str) -> None:
+        # follow the channel that changed last (wall panel, script or HA command)
+        changed = {k for k in self._seen if k and status.get(k) != self._seen[k]}
+        self._seen = {k: status.get(k) for k in self._seen}
+        if len(self._attr_supported_color_modes) < 2 or source == "command":
+            return
+        if self._ct_key in changed and not (changed - {self._ct_key}):
+            self._last_mode = ColorMode.COLOR_TEMP
+        elif changed - {self._ct_key}:
+            self._last_mode = self._colour_mode
 
     @property
     def is_on(self) -> bool | None:
@@ -122,12 +141,7 @@ class LarnitechLight(LarnitechEntity, LightEntity):
             k = kwargs[ATTR_COLOR_TEMP_KELVIN]
             cmd[self._ct_key or "color-white"] = max(0, min(100, round((MAX_K - k) * 100 / (MAX_K - MIN_K))))
             self._last_mode = ColorMode.COLOR_TEMP
-        if ATTR_TRANSITION in kwargs:
-            cmd["auto-period"] = round(kwargs[ATTR_TRANSITION])
         await self._send(cmd)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        cmd: dict[str, Any] = {"state": "off"}
-        if ATTR_TRANSITION in kwargs:
-            cmd["auto-period"] = round(kwargs[ATTR_TRANSITION])
-        await self._send(cmd)
+        await self._send({"state": "off"})

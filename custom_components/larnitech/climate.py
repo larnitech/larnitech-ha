@@ -50,7 +50,11 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
     def __init__(self, entry, device) -> None:
         super().__init__(entry, device)
         st = device.get("status") or {}
+        kind = device.get("type")
         lt_modes = [str(m) for m in (device.get("modes") or [])]
+        if not lt_modes and kind in ("conditioner", "fancoil"):
+            # the controller lists modes only for some elements
+            lt_modes = ["cool", "heat", "fan", "auto"]
         if "mode" in st and str(st["mode"]) not in lt_modes:
             lt_modes.append(str(st["mode"]))
         if device.get("type") == "climate-control" and "auto" not in lt_modes and "setpoint-heat" in st and "setpoint-cool" in st:
@@ -60,6 +64,10 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
             hv = LT_TO_HVAC.get(m)
             if hv and hv not in self._mode_map:
                 self._mode_map[hv] = m
+        if kind == "valve-heating":
+            # a heating valve only heats: on/off, no mode field
+            self._mode_map = {}
+        self._send_mode = bool(self._mode_map)
         if not self._mode_map:
             self._mode_map[HVACMode.HEAT] = "heat"
         self._attr_hvac_modes = [HVACMode.OFF, *self._mode_map]
@@ -169,7 +177,10 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
         if hvac_mode == HVACMode.OFF:
             await self._send({"state": "off"})
             return
-        await self._send({"state": "on", "mode": self._mode_map.get(hvac_mode, HVAC_TO_LT_DEFAULT.get(hvac_mode, "auto"))})
+        cmd: dict[str, Any] = {"state": "on"}
+        if self._send_mode:
+            cmd["mode"] = self._mode_map.get(hvac_mode, HVAC_TO_LT_DEFAULT.get(hvac_mode, "auto"))
+        await self._send(cmd)
 
     async def async_turn_on(self) -> None:
         await self._send({"state": "on"})
@@ -181,7 +192,8 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
         cmd: dict[str, Any] = {}
         if ATTR_HVAC_MODE in kwargs and kwargs[ATTR_HVAC_MODE] != HVACMode.OFF:
             cmd["state"] = "on"
-            cmd["mode"] = self._mode_map.get(kwargs[ATTR_HVAC_MODE], "auto")
+            if self._send_mode:
+                cmd["mode"] = self._mode_map.get(kwargs[ATTR_HVAC_MODE], "auto")
         if ATTR_TARGET_TEMP_LOW in kwargs:
             cmd["setpoint-heat"] = float(kwargs[ATTR_TARGET_TEMP_LOW])
         if ATTR_TARGET_TEMP_HIGH in kwargs:

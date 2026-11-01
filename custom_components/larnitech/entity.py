@@ -103,12 +103,12 @@ class LarnitechEntity(Entity):
         self.async_on_remove(self._client.add_connection_listener(self._on_connection))
 
     @callback
-    def _on_status(self, addr: str, status: dict[str, Any]) -> None:
+    def _on_status(self, addr: str, status: dict[str, Any], source: str) -> None:
         if addr == self.addr:
-            self._handle_status(status)
+            self._handle_status(status, source)
             self.async_write_ha_state()
 
-    def _handle_status(self, status: dict[str, Any]) -> None:
+    def _handle_status(self, status: dict[str, Any], source: str) -> None:
         """Hook for subclasses (events)."""
 
     @callback

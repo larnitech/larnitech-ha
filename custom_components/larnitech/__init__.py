@@ -1,6 +1,7 @@
 """The Larnitech integration: Larnitech smart home controller over API2, local push."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import voluptuous as vol
@@ -14,7 +15,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
 from .bridge import EntityBridge
-from .const import CONF_EXPORT_ENTITIES, CONF_KEY, CONF_SERIAL, DOMAIN, MANUFACTURER
+from .const import APP_ID, CONF_EXPORT_ENTITIES, CONF_KEY, CONF_SERIAL, DOMAIN, MANUFACTURER
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
@@ -48,7 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
     client = LarnitechClient(
         async_get_clientsession(hass), entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_KEY]
     )
-    bridge = EntityBridge(hass, client, entry.options.get(CONF_EXPORT_ENTITIES, []))
+    bridge = EntityBridge(hass, client, entry.entry_id, entry.options.get(CONF_EXPORT_ENTITIES, []))
     await bridge.async_start()
     try:
         await client.start()
@@ -73,6 +76,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
     entry.runtime_data = LarnitechData(client, hub_id, bridge)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
+
+    def _on_new_devices(addrs: set[str]) -> None:
+        # the project was changed in LT Setup: reload so new elements get entities
+        _LOGGER.info("New Larnitech elements %s, reloading", sorted(addrs))
+        hass.config_entries.async_schedule_reload(entry.entry_id)
+
+    entry.async_on_unload(client.add_new_devices_listener(_on_new_devices))
+    # the key was changed on the controller: ask the user for the new one
+    client.on_auth_failed = lambda: entry.async_start_reauth(hass)
     _register_services(hass)
     return True
 
@@ -83,6 +95,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) -
         await entry.runtime_data.bridge.async_stop()
         await entry.runtime_data.client.close()
     return ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) -> None:
+    """The integration is deleted: remove the elements it created for Home Assistant entities."""
+    if not entry.options.get(CONF_EXPORT_ENTITIES):
+        return
+    client = LarnitechClient(
+        async_get_clientsession(hass), entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_KEY]
+    )
+    try:
+        await client.connect()
+        await client.request({"request": "setup", "appId": APP_ID})
+        await client.request({"request": "she-register-pnp", "pnp": []})
+    except LarnitechError as err:
+        _LOGGER.warning("Could not remove Home Assistant elements from the controller: %s", err)
+    finally:
+        await client.close()
+    await EntityBridge.async_forget(hass, entry.entry_id)
 
 
 async def _async_reload(hass: HomeAssistant, entry: LarnitechConfigEntry) -> None:

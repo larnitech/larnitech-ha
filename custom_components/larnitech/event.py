@@ -25,7 +25,10 @@ class LarnitechEvent(LarnitechEntity, EventEntity):
         super().__init__(entry, device)
         self._attr_device_class = EventDeviceClass.BUTTON
 
-    def _handle_status(self, status: dict[str, Any]) -> None:
+    def _handle_status(self, status: dict[str, Any], source: str) -> None:
+        # only real presses: not the re-read after a reconnect
+        if source != "push":
+            return
         raw = str(status.get("event", status.get("state", "change"))).lower().replace("-", "_")
         name = raw if raw in EVENT_NAMES else ("code" if "code" in status else "change")
         data = {k.replace("-", "_"): v for k, v in status.items()}
