@@ -12,6 +12,9 @@ from . import LarnitechConfigEntry
 from .api import LarnitechClient, LarnitechError
 from .const import APP_ID, CONF_IGNORED_TYPES, DOMAIN, MANUFACTURER, SKIP_TYPES
 
+# Home Assistant 2026.10 links a device to its hub by device id; "via_device" is removed in 2027.8
+VIA_DEVICE_ID = "via_device_id" in DeviceInfo.__annotations__
+
 ON_VALUES = {"on", "1", "true", "open", "opened", "alarm", "detected", "motion", "leak", "yes", "middle", "opening", "closing"}
 
 
@@ -82,9 +85,12 @@ class LarnitechEntity(Entity):
             manufacturer=MANUFACTURER,
             model=kind_of(device),
             suggested_area=device.get("area") or None,
-            via_device=(DOMAIN, hub),
             serial_number=self.addr,
         )
+        if VIA_DEVICE_ID:
+            self._attr_device_info["via_device_id"] = entry.runtime_data.hub_device_id
+        else:
+            self._attr_device_info["via_device"] = (DOMAIN, hub)
 
     @property
     def status(self) -> dict[str, Any]:

@@ -48,7 +48,7 @@ class LarnitechCover(LarnitechEntity, CoverEntity):
         if not self._pos_key:
             return None
         pos = to_float(self.status.get(self._pos_key))
-        return None if pos is None else int(100 - max(0, min(100, pos)))
+        return None if pos is None else round(100 - max(0, min(100, pos)))
 
     @property
     def is_closed(self) -> bool | None:

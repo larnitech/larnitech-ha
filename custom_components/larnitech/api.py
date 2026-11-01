@@ -27,6 +27,7 @@ REQUEST_TIMEOUT = 15
 HEARTBEAT = 30
 RECONNECT_MIN = 2
 RECONNECT_MAX = 60
+CONFIRM_DELAY = 0.5
 
 
 class LarnitechError(Exception):
@@ -250,7 +251,8 @@ class LarnitechClient:
             if isinstance(dev, dict) and "addr" in dev and "status" in dev:
                 self._apply_status(str(dev["addr"]), dev["status"], "push")
 
-    def _apply_status(self, addr: str, status: Any, source: str) -> None:
+    def _apply_status(self, addr: str, status: Any, source: str, replace: bool = False) -> None:
+        """Merge a status change; replace=True for a complete status read with status-get."""
         if isinstance(status, str):
             # compact hex status ("0x08"): ask for the readable form
             self._schedule_refresh(addr)
@@ -260,19 +262,19 @@ class LarnitechClient:
         dev = self.devices.get(addr)
         if dev is None:
             return
-        merged = dict(dev.get("status") or {})
+        merged = {} if replace else dict(dev.get("status") or {})
         merged.update(status)
         dev["status"] = merged
         for cb in list(self._status_listeners):
             cb(addr, merged, source)
 
-    def _schedule_refresh(self, addr: str) -> None:
+    def _schedule_refresh(self, addr: str, delay: float = 0.05) -> None:
         if addr in self._refresh_pending or addr not in self.devices:
             return
         self._refresh_pending.add(addr)
 
         async def _do() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(delay)
             self._refresh_pending.discard(addr)
             with contextlib.suppress(LarnitechError):
                 await self.refresh(addr)
@@ -350,7 +352,7 @@ class LarnitechClient:
         reply = await self.request({"request": "status-get", "addr": addr, "status": "detailed"})
         for dev in reply.get("devices") or []:
             if isinstance(dev, dict) and isinstance(dev.get("status"), dict):
-                self._apply_status(str(dev.get("addr", addr)), dev["status"], "push")
+                self._apply_status(str(dev.get("addr", addr)), dev["status"], "push", replace=True)
 
     async def set_status(self, addr: str, status: dict[str, Any] | str) -> None:
         reply = await self.request({"request": "status-set", "addr": addr, "status": status})
@@ -362,6 +364,9 @@ class LarnitechClient:
         # optimistic update; the pushed event will confirm it
         if isinstance(status, dict):
             self._apply_status(addr, status, "command")
+        # the controller answers "success" also for fields it ignores (target, mode or automation of a
+        # fancoil or heating valve without sensors): read the real status back so HA does not keep them
+        self._schedule_refresh(addr, CONFIRM_DELAY)
 
 
 def _is_error(reply: dict[str, Any]) -> bool:

@@ -1,4 +1,8 @@
-"""Locks: Larnitech lamp elements with sub-type "lock" (on = locked)."""
+"""Locks: Larnitech lamp elements with sub-type "lock".
+
+Such an output drives an electric lock: "on" opens it (a short pulse, channel type "Lock (short press)",
+the controller switches it back off by itself), "off" is the idle, locked state.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -19,10 +23,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry, as
 class LarnitechLock(LarnitechEntity, LockEntity):
     @property
     def is_locked(self) -> bool | None:
-        return is_on_value(self.status.get("state"))
+        on = is_on_value(self.status.get("state"))
+        return None if on is None else not on
 
     async def async_lock(self, **kwargs: Any) -> None:
-        await self._send({"state": "on"})
+        await self._send({"state": "off"})
 
     async def async_unlock(self, **kwargs: Any) -> None:
-        await self._send({"state": "off"})
+        await self._send({"state": "on"})

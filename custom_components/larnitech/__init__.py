@@ -42,6 +42,7 @@ class LarnitechData:
     client: LarnitechClient
     hub_id: str
     bridge: EntityBridge
+    hub_device_id: str
 
 
 type LarnitechConfigEntry = ConfigEntry[LarnitechData]
@@ -65,7 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
         raise ConfigEntryNotReady(str(err)) from err
 
     hub_id = entry.data.get(CONF_SERIAL) or entry.data[CONF_HOST]
-    dr.async_get(hass).async_get_or_create(
+    hub_device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, hub_id)},
         manufacturer=MANUFACTURER,
@@ -73,7 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
         name=entry.title,
         configuration_url=f"http://{entry.data[CONF_HOST]}/",
     )
-    entry.runtime_data = LarnitechData(client, hub_id, bridge)
+    entry.runtime_data = LarnitechData(client, hub_id, bridge, hub_device.id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
 

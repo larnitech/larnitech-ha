@@ -52,9 +52,10 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
         st = device.get("status") or {}
         kind = device.get("type")
         lt_modes = [str(m) for m in (device.get("modes") or [])]
-        if not lt_modes and kind in ("conditioner", "fancoil"):
+        if not lt_modes and kind == "conditioner":
             # the controller lists modes only for some elements
             lt_modes = ["cool", "heat", "fan", "auto"]
+        # a fancoil heats or cools as its automation says ("mode" is read-only in API2): only its current mode
         if "mode" in st and str(st["mode"]) not in lt_modes:
             lt_modes.append(str(st["mode"]))
         if device.get("type") == "climate-control" and "auto" not in lt_modes and "setpoint-heat" in st and "setpoint-cool" in st:
@@ -73,13 +74,18 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
         self._attr_hvac_modes = [HVACMode.OFF, *self._mode_map]
 
         feats = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
-        # conditioner, fancoil, heating valve: "target"; climate-control: "setpoint"/"setpoint-heat"/"setpoint-cool"
-        self._target_key = "target" if "target" in st or device.get("type") in ("conditioner", "fancoil", "valve-heating") else "setpoint"
-        if self._target_key == "target" or any(k in st for k in ("setpoint", "setpoint-heat", "setpoint-cool")):
+        # conditioner: "target"; climate-control: "setpoint"/"setpoint-heat"/"setpoint-cool". A fancoil or heating
+        # valve has a setpoint only when the controller reports one: API2 ignores "target" for them otherwise.
+        self._target_key = "target" if "target" in st or kind == "conditioner" else "setpoint"
+        if "target" in st or kind == "conditioner" or any(k in st for k in ("setpoint", "setpoint-heat", "setpoint-cool")):
             feats |= ClimateEntityFeature.TARGET_TEMPERATURE
         if "setpoint-heat" in st and "setpoint-cool" in st:
             feats |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        # automations work as presets where the controller reports the current one; a heating valve without
+        # sensors lists its automations but ignores {"automation": ...}
         self._presets = [str(a) for a in (device.get("automations") or [])]
+        if self._presets and "automation" not in st and "automation" not in device:
+            self._presets = []
         if self._presets:
             feats |= ClimateEntityFeature.PRESET_MODE
             self._attr_preset_modes = self._presets
@@ -189,8 +195,11 @@ class LarnitechClimate(LarnitechEntity, ClimateEntity):
         await self._send({"state": "off"})
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        if kwargs.get(ATTR_HVAC_MODE) == HVACMode.OFF:
+            await self._send({"state": "off"})
+            return
         cmd: dict[str, Any] = {}
-        if ATTR_HVAC_MODE in kwargs and kwargs[ATTR_HVAC_MODE] != HVACMode.OFF:
+        if ATTR_HVAC_MODE in kwargs:
             cmd["state"] = "on"
             if self._send_mode:
                 cmd["mode"] = self._mode_map.get(kwargs[ATTR_HVAC_MODE], "auto")
