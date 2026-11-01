@@ -12,6 +12,7 @@ CONF_EXPORT_ENTITIES = "export_entities"
 
 EVENT_LARNITECH = "larnitech_event"
 
+LOCK_TYPES = {"lock"}
 LIGHT_TYPES = {"lamp", "dimer-lamp", "dimmer-lamp", "rgb-lamp"}
 SWITCH_TYPES = {"valve", "speaker", "switch-relay", "socket"}
 COVER_TYPES = {"jalousie", "gate", "blinds", "curtain"}

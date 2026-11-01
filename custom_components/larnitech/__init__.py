@@ -24,6 +24,7 @@ PLATFORMS = [
     Platform.EVENT,
     Platform.FAN,
     Platform.LIGHT,
+    Platform.LOCK,
     Platform.SCENE,
     Platform.SENSOR,
     Platform.SWITCH,

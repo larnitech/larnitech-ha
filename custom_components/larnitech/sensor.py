@@ -22,9 +22,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import LarnitechConfigEntry
 from .const import (
     BINARY_SENSOR_TYPES, BUTTON_TYPES, CLIMATE_TYPES, COVER_TYPES, EVENT_TYPES, FAN_TYPES,
-    LIGHT_TYPES, SCENE_TYPES, SECURITY_TYPES, SENSOR_TYPES, SKIP_TYPES, SWITCH_TYPES, CONF_IGNORED_TYPES,
+    LIGHT_TYPES, LOCK_TYPES, SCENE_TYPES, SECURITY_TYPES, SENSOR_TYPES, SKIP_TYPES, SWITCH_TYPES, CONF_IGNORED_TYPES,
 )
-from .entity import LarnitechEntity, kind_of, to_float
+from .entity import LarnitechEntity, is_own, kind_of, to_float
 
 SPECS: dict[str, tuple[SensorDeviceClass | None, str | None, tuple[str, ...]]] = {
     "temperature-sensor": (SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, ("temperature", "value", "state")),
@@ -39,7 +39,7 @@ SPECS: dict[str, tuple[SensorDeviceClass | None, str | None, tuple[str, ...]]] =
     "noise-sensor": (SensorDeviceClass.SOUND_PRESSURE, UnitOfSoundPressure.DECIBEL, ("noise", "value", "state")),
 }
 HANDLED = (
-    LIGHT_TYPES | SWITCH_TYPES | COVER_TYPES | CLIMATE_TYPES | FAN_TYPES | SENSOR_TYPES
+    LIGHT_TYPES | LOCK_TYPES | SWITCH_TYPES | COVER_TYPES | CLIMATE_TYPES | FAN_TYPES | SENSOR_TYPES
     | BINARY_SENSOR_TYPES | SCENE_TYPES | BUTTON_TYPES | EVENT_TYPES | SECURITY_TYPES | SKIP_TYPES
 )
 
@@ -49,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry, as
     entities: list[SensorEntity] = []
     for dev in entry.runtime_data.client.devices.values():
         kind = kind_of(dev)
-        if dev.get("ha-owned"):
+        if is_own(dev):
             continue
         if kind in ignored:
             continue

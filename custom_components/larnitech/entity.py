@@ -10,7 +10,7 @@ from homeassistant.helpers.entity import Entity
 
 from . import LarnitechConfigEntry
 from .api import LarnitechClient, LarnitechError
-from .const import CONF_IGNORED_TYPES, DOMAIN, MANUFACTURER, SKIP_TYPES
+from .const import APP_ID, CONF_IGNORED_TYPES, DOMAIN, MANUFACTURER, SKIP_TYPES
 
 ON_VALUES = {"on", "1", "true", "open", "opened", "alarm", "detected", "motion", "leak", "yes", "middle", "opening", "closing"}
 
@@ -41,6 +41,8 @@ VIRTUAL_ALIASES = {"jalousie120": "jalousie", "gate120": "gate", "ventilation": 
 def kind_of(device: dict[str, Any]) -> str:
     """Element type; a virtual element counts as its sub-type (type="virtual" sub-type="lamp")."""
     kind = str(device.get("type") or "")
+    if kind == "lamp" and device.get("sub-type") == "lock":
+        return "lock"
     if kind == "virtual":
         sub = str(device.get("sub-type") or "")
         return VIRTUAL_ALIASES.get(sub, sub) or kind
@@ -52,8 +54,13 @@ def devices_of(entry: LarnitechConfigEntry, types: set[str]) -> list[dict[str, A
     return [
         d
         for d in entry.runtime_data.client.devices.values()
-        if kind_of(d) in types and kind_of(d) not in ignored and not d.get("ha-owned")
+        if kind_of(d) in types and kind_of(d) not in ignored and not is_own(d)
     ]
+
+
+def is_own(device: dict[str, Any]) -> bool:
+    """Elements this integration created for Home Assistant entities: never mirror them back."""
+    return bool(device.get("ha-owned")) or device.get("plugin") == APP_ID
 
 
 class LarnitechEntity(Entity):
