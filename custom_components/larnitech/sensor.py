@@ -5,7 +5,6 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION,
     LIGHT_LUX,
     PERCENTAGE,
     UnitOfElectricCurrent,
@@ -17,6 +16,13 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+
+try:  # Home Assistant 2026.10+
+    from homeassistant.const import UnitOfRatio
+
+    PPM = UnitOfRatio.PARTS_PER_MILLION
+except ImportError:
+    from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION as PPM
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import LarnitechConfigEntry
@@ -30,7 +36,7 @@ SPECS: dict[str, tuple[SensorDeviceClass | None, str | None, tuple[str, ...]]] =
     "temperature-sensor": (SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, ("temperature", "value", "state")),
     "humidity-sensor": (SensorDeviceClass.HUMIDITY, PERCENTAGE, ("humidity", "value", "state")),
     "illumination-sensor": (SensorDeviceClass.ILLUMINANCE, LIGHT_LUX, ("illumination", "illuminance", "value", "state")),
-    "co2-sensor": (SensorDeviceClass.CO2, CONCENTRATION_PARTS_PER_MILLION, ("co2", "value", "state")),
+    "co2-sensor": (SensorDeviceClass.CO2, PPM, ("co2", "value", "state")),
     "voltage-sensor": (SensorDeviceClass.VOLTAGE, UnitOfElectricPotential.VOLT, ("voltage", "value", "state")),
     "current-sensor": (SensorDeviceClass.CURRENT, UnitOfElectricCurrent.AMPERE, ("current", "value", "state")),
     "power-sensor": (SensorDeviceClass.POWER, UnitOfPower.WATT, ("power", "value", "state")),
