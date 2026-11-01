@@ -266,7 +266,7 @@ class LarnitechClient:
             fut: asyncio.Future = asyncio.get_running_loop().create_future()
             self._pending = (payload["request"], fut)
             try:
-                await ws.send_str(json.dumps(payload))
+                await ws.send_str(json.dumps(payload, ensure_ascii=False))  # the controller keeps \u escapes literally
                 async with asyncio.timeout(REQUEST_TIMEOUT):
                     return await fut
             except (aiohttp.ClientError, ConnectionResetError) as err:
