@@ -10,6 +10,8 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 
 ## Install
 
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=larnitech&repository=larnitech-ha&category=integration)
+
 1. In HACS open ⋮ → *Custom repositories*, add `https://github.com/larnitech/larnitech-ha` with type *Integration*, install **Larnitech** and restart Home Assistant.
 2. *Settings → Devices & services → Add integration → Larnitech*.
 3. Enter the controller address, port `2041` and the API key. LT Setup shows all three on *Plugins → Home Assistant*.
