@@ -10,7 +10,7 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 
 ## Install
 
-1. In HACS open ⋮ → *Custom repositories*, add `https://github.com/larnitech/ha-larnitech` with type *Integration*, install **Larnitech** and restart Home Assistant.
+1. In HACS open ⋮ → *Custom repositories*, add `https://github.com/larnitech/larnitech-ha` with type *Integration*, install **Larnitech** and restart Home Assistant.
 2. *Settings → Devices & services → Add integration → Larnitech*.
 3. Enter the controller address, port `2041` and the API key. LT Setup shows all three on *Plugins → Home Assistant*.
 
@@ -34,4 +34,4 @@ Wall switches, remotes and IR receivers fire `larnitech_event` events and appear
 
 Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly.
 
-Установка: HACS → ⋮ → Пользовательские репозитории → `https://github.com/larnitech/ha-larnitech` (Integration) → установить **Larnitech** → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
+Установка: HACS → ⋮ → Пользовательские репозитории → `https://github.com/larnitech/larnitech-ha` (Integration) → установить **Larnitech** → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.

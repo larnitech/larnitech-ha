@@ -3,10 +3,10 @@
   "name": "Larnitech",
   "codeowners": ["@larnitech"],
   "config_flow": true,
-  "documentation": "https://github.com/larnitech/ha-larnitech",
+  "documentation": "https://github.com/larnitech/larnitech-ha",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/larnitech/ha-larnitech/issues",
+  "issue_tracker": "https://github.com/larnitech/larnitech-ha/issues",
   "requirements": [],
-  "version": "1.1.2"
+  "version": "1.1.3"
 }
