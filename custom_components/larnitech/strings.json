@@ -59,7 +59,7 @@
         },
         "status": {
           "name": "Status",
-          "description": "Status object, e.g. {\"state\": \"on\", \"level\": 50}"
+          "description": "Status object with the fields to set, such as state and level"
         }
       }
     },
