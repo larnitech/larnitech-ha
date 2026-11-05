@@ -10,13 +10,27 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 
 ## Install
 
-[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=larnitech&repository=larnitech-ha&category=integration)
-
-1. In HACS open ⋮ → *Custom repositories*, add `https://github.com/larnitech/larnitech-ha` with type *Integration*, install **Larnitech** and restart Home Assistant.
+1. Open HACS, search for **Larnitech**, install it and restart Home Assistant. The search finds it once it is listed in the HACS default repositories. Until then use the button or the custom repository steps below.
 2. *Settings → Devices & services → Add integration → Larnitech*.
 3. Enter the controller address, port `2041` and the API key. LT Setup shows all three on *Plugins → Home Assistant*.
 
-[![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=larnitech)
+[![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=larnitech_official)
+
+### Install as a custom repository
+
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=larnitech&repository=larnitech-ha&category=integration)
+
+In HACS open ⋮ → *Custom repositories*, add `https://github.com/larnitech/larnitech-ha` with type *Integration*, install **Larnitech** and restart Home Assistant. Then continue from step 2 above.
+
+### Migrating from 1.1.x
+
+Version 1.2.0 changes the integration domain from `larnitech` to `larnitech_official`, so it can be installed next to the other Larnitech integration in HACS.
+
+1. Remove the old Larnitech integration in *Settings → Devices & services*.
+2. Update to 1.2.0 in HACS and restart Home Assistant. Delete the old `custom_components/larnitech` folder if it remains.
+3. Add the integration again.
+
+Automations and scripts need updating: the services are now `larnitech_official.*` and the event is `larnitech_official_event`.
 
 ## Options
 
@@ -25,10 +39,10 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 
 ## Services
 
-- `larnitech.set_status`: send any status to an element, e.g. `addr: "585:17"`, `status: {"state": "on", "level": 50}`.
-- `larnitech.reload_devices`: reload the element list after the project was changed in LT Setup.
+- `larnitech_official.set_status`: send any status to an element, e.g. `addr: "585:17"`, `status: {"state": "on", "level": 50}`.
+- `larnitech_official.reload_devices`: reload the element list after the project was changed in LT Setup.
 
-Wall switches, remotes and IR receivers fire `larnitech_event` events and appear as event entities.
+Wall switches, remotes and IR receivers fire `larnitech_official_event` events and appear as event entities.
 
 ---
 
@@ -36,4 +50,8 @@ Wall switches, remotes and IR receivers fire `larnitech_event` events and appear
 
 Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly.
 
-Установка: HACS → ⋮ → Пользовательские репозитории → `https://github.com/larnitech/larnitech-ha` (Integration) → установить **Larnitech** → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
+Установка: HACS → поиск **Larnitech** (когда интеграция появится в списке HACS) → установить → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
+
+Пока интеграции нет в списке: HACS → ⋮ → Пользовательские репозитории → `https://github.com/larnitech/larnitech-ha` (Integration) → установить **Larnitech**, дальше так же.
+
+Переход с 1.1.x: в версии 1.2.0 домен изменился на `larnitech_official`. Удалите старую интеграцию Larnitech, обновитесь в HACS, перезапустите HA, удалите папку `custom_components/larnitech`, если она осталась, и добавьте интеграцию заново. В автоматизациях и сценариях замените службы на `larnitech_official.*` и событие на `larnitech_official_event`.

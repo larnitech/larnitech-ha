@@ -1,7 +1,7 @@
 """Constants for the Larnitech integration."""
 from __future__ import annotations
 
-DOMAIN = "larnitech"
+DOMAIN = "larnitech_official"
 DEFAULT_PORT = 2041
 MANUFACTURER = "Larnitech"
 
@@ -10,7 +10,7 @@ CONF_SERIAL = "serial"
 CONF_IGNORED_TYPES = "ignored_types"
 CONF_EXPORT_ENTITIES = "export_entities"
 
-EVENT_LARNITECH = "larnitech_event"
+EVENT_LARNITECH = "larnitech_official_event"
 
 LOCK_TYPES = {"lock"}
 LIGHT_TYPES = {"lamp", "dimer-lamp", "dimmer-lamp", "rgb-lamp"}
