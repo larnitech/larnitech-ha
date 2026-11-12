@@ -39,11 +39,15 @@
         "title": "Настройки Larnitech",
         "data": {
           "ignored_types": "Скрыть типы элементов",
-          "export_entities": "Устройства Home Assistant в Larnitech"
+          "export_entities": "Устройства Home Assistant в Larnitech",
+          "motion_threshold": "Порог движения",
+          "motion_level": "Датчики уровня движения"
         },
         "data_description": {
           "ignored_types": "Элементы этих типов не добавляются в Home Assistant.",
-          "export_entities": "Эти сущности станут элементами Larnitech: появятся в приложении Larnitech, и их можно использовать в сценариях и Blockly. Команды из Larnitech управляют ими здесь."
+          "export_entities": "Эти сущности станут элементами Larnitech: появятся в приложении Larnitech, и их можно использовать в сценариях и Blockly. Команды из Larnitech управляют ими здесь.",
+          "motion_threshold": "Датчик движения Larnitech сообщает уровень движения от 0 до 100 %. Уровень выше этого значения считается движением. По умолчанию 15 %.",
+          "motion_level": "Добавить для каждого датчика движения ещё и датчик уровня движения в %, для своих автоматизаций."
         },
         "description": "Выберите сущности Home Assistant, которые станут элементами Larnitech.{problems}"
       },
@@ -77,6 +81,17 @@
     "switch": {
       "script_active": {
         "name": "Режим"
+      }
+    },
+    "sensor": {
+      "motion_level": {
+        "name": "Уровень движения"
+      },
+      "sunrise": {
+        "name": "Восход"
+      },
+      "sunset": {
+        "name": "Закат"
       }
     }
   },

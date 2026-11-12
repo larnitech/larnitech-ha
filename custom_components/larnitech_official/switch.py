@@ -11,7 +11,7 @@ from . import LarnitechConfigEntry
 from .const import BUTTON_TYPES, SWITCH_TYPES
 from .entity import LarnitechEntity, devices_of, is_on_value, kind_of
 
-ICONS = {"valve": "mdi:pipe-valve", "speaker": "mdi:speaker"}
+ICONS = {"valve": "mdi:pipe-valve", "air-fan": "mdi:fan"}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry, async_add: AddEntitiesCallback) -> None:

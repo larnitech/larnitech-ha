@@ -3,7 +3,13 @@
 Local integration of the [Larnitech](https://larnitech.com) smart home controller with Home Assistant.
 
 - **Local push**: Home Assistant talks to the controller over its API2 WebSocket (port 2041). No cloud, no MQTT broker, changes arrive instantly in both directions.
-- **Everything from the project**: lights, dimmers, RGB and tunable white, relays and water valves, blinds and gates, climate controllers (modes, heat/cool setpoints, automations as presets), air conditioners, fancoils, heating valves, ventilation, temperature / humidity / illuminance / CO₂ sensors, motion, door and leak sensors, light scenes, scripts, wall switches and remotes (as events for automations).
+- **Everything from the project**: lights, dimmers, RGB and tunable white, relays and water valves, blinds and gates, climate controllers (modes, heat/cool setpoints, automations as presets), air conditioners, fancoils, heating valves, ventilation, temperature / humidity / illuminance / CO₂ / voltage / current / power / frequency / consumption / percent / number sensors, motion, door and leak sensors, light scenes, scripts, wall switches (as events for automations), virtual sensors and texts of scripts and plugins, the weather plugin (weather with forecast, sunrise and sunset).
+- **Values as the Larnitech app shows them**:
+  - the illumination sensor is a relative level (0–100 %); Home Assistant shows it in lux with the app's own formula (the same as the app with *Lux measuring* on, at most 2000 lx) and keeps the level as the `level` attribute;
+  - a motion sensor reports a motion level (0–100 %); it is *on* when the level is above the threshold in the options (15 % by default). Optionally each motion sensor also gets a sensor with the level in %;
+  - voltage, power, frequency, consumption, percent and number sensors are 8.8 fixed-point values (V, kW, Hz, kWh, %, number); current sensors are in mA;
+  - a virtual sensor takes its unit from its `dim` attribute.
+- **Not added**, because Home Assistant cannot use them through API2: IR transmitters and receivers, remote controls, cameras (rtsp), intercoms, speakers and microphones, COM ports, card readers and the app's formatted text panels (`prf`). Entities of earlier versions for these are removed from the registry on update.
 - **Rooms**: every element becomes a Home Assistant device in the area named after its Larnitech room.
 - **Home Assistant devices in Larnitech**: pick any lights, switches, covers, climate, locks, fans and sensors in the integration options and they become real Larnitech elements, visible in the Larnitech app and usable in Larnitech scripts and Blockly.
 
@@ -54,19 +60,23 @@ Automations and scripts need updating: the services are now `larnitech_official.
 - **Home Assistant devices in Larnitech**: entities that are registered on the controller as Larnitech elements.
 - **Show in Larnitech as**: the next step, shown when a selected entity is a number, sets the Larnitech element type for each such entity. You can change it later; the element keeps its address.
 - **Hide element types**: Larnitech element types that are not added to Home Assistant.
+- **Motion threshold**: a motion level above this value counts as motion (default 15 %).
+- **Motion level sensors**: also add a sensor with the motion level in % for each motion sensor (off by default).
 
 ## Services
 
 - `larnitech_official.set_status`: send any status to an element, e.g. `addr: "585:17"`, `status: {"state": "on", "level": 50}`.
 - `larnitech_official.reload_devices`: reload the element list after the project was changed in LT Setup.
 
-Wall switches, remotes and IR receivers fire `larnitech_official_event` events and appear as event entities.
+Wall switches fire `larnitech_official_event` events and appear as event entities.
 
 ---
 
 # Larnitech для Home Assistant
 
 Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly. Числовые датчики (батарея, загрузка процессора, давление, мощность и т. д.) можно показать как датчик процентов, числовой датчик, виртуальный датчик с единицей измерения или текст; тип выбирается на следующем шаге настроек.
+
+Датчик освещённости Larnitech хранит относительный уровень (0–100 %); в HA он показывается в люксах по формуле приложения Larnitech (как в приложении с включённым «Lux measuring»), уровень в % остаётся в атрибуте `level`. Датчик движения сообщает уровень движения (0–100 %): движением считается уровень выше порога из настроек (по умолчанию 15 %); по желанию для каждого датчика движения добавляется датчик уровня в %. ИК-передатчики и приёмники, пульты, камеры (rtsp), домофоны, колонки и микрофоны в HA не добавляются.
 
 Установка: HACS → поиск **Larnitech** (когда интеграция появится в списке HACS) → установить → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
 

@@ -19,7 +19,10 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
 from .entity import is_own, kind_of
 from .bridge import type_choices
-from .const import CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_IGNORED_TYPES, CONF_KEY, CONF_SERIAL, DEFAULT_PORT, DOMAIN
+from .const import (
+    CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_IGNORED_TYPES, CONF_KEY, CONF_MOTION_LEVEL, CONF_MOTION_THRESHOLD,
+    CONF_SERIAL, DEFAULT_MOTION_THRESHOLD, DEFAULT_PORT, DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -154,6 +157,17 @@ class LarnitechOptionsFlow(OptionsFlow):
                 vol.Optional(CONF_IGNORED_TYPES, default=current): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=sorted(set(types) | set(current)), multiple=True)
                 ),
+                vol.Optional(
+                    CONF_MOTION_THRESHOLD,
+                    default=self.config_entry.options.get(CONF_MOTION_THRESHOLD, DEFAULT_MOTION_THRESHOLD),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0, max=99, step=1, unit_of_measurement="%", mode=selector.NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Optional(
+                    CONF_MOTION_LEVEL, default=self.config_entry.options.get(CONF_MOTION_LEVEL, False)
+                ): selector.BooleanSelector(),
             }
         )
         return self.async_show_form(

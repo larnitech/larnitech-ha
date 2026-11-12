@@ -11,6 +11,7 @@ from homeassistant.helpers.entity import Entity
 from . import LarnitechConfigEntry
 from .api import LarnitechClient, LarnitechError
 from .const import APP_ID, CONF_IGNORED_TYPES, DOMAIN, MANUFACTURER, SKIP_TYPES
+from .decode import is_weather
 
 # Home Assistant 2026.10 links a device to its hub by device id; "via_device" is removed in 2027.8
 VIA_DEVICE_ID = "via_device_id" in DeviceInfo.__annotations__
@@ -47,6 +48,8 @@ def kind_of(device: dict[str, Any]) -> str:
     if kind == "lamp" and device.get("sub-type") == "lock":
         return "lock"
     if kind == "virtual":
+        if is_weather(device):
+            return "weather"
         sub = str(device.get("sub-type") or "")
         return VIRTUAL_ALIASES.get(sub, sub) or kind
     return kind
@@ -83,6 +86,9 @@ class LarnitechEntity(Entity):
         self.addr = str(device["addr"])
         hub = entry.runtime_data.hub_id
         self._attr_unique_id = f"{hub}_{self.addr}{self._unique_suffix}"
+        # entities of this set-up, by platform (the module of the class: sensor, light, ...): the registry
+        # entries of the others are removed after it
+        entry.runtime_data.unique_ids.add((type(self).__module__.rsplit(".", 1)[-1], self._attr_unique_id))
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{hub}_{self.addr}")},
             name=device.get("name") or self.addr,

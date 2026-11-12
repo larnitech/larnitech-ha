@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import voluptuous as vol
 
@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
@@ -33,6 +33,7 @@ PLATFORMS = [
     Platform.SCENE,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.WEATHER,
 ]
 
 SERVICE_SET_STATUS = "set_status"
@@ -45,6 +46,8 @@ class LarnitechData:
     hub_id: str
     bridge: EntityBridge
     hub_device_id: str
+    # (platform, unique id) of the entities created in this set-up
+    unique_ids: set[tuple[str, str]] = field(default_factory=set)
 
 
 type LarnitechConfigEntry = ConfigEntry[LarnitechData]
@@ -92,6 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
     )
     entry.runtime_data = LarnitechData(client, hub_id, bridge, hub_device.id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _remove_stale_entities(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
 
     def _on_new_devices(addrs: set[str]) -> None:
@@ -104,6 +108,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
     client.on_auth_failed = lambda: entry.async_start_reauth(hass)
     _register_services(hass)
     return True
+
+
+def _remove_stale_entities(hass: HomeAssistant, entry: LarnitechConfigEntry) -> None:
+    """Remove registry entries this version no longer creates (element types that cannot work in Home
+    Assistant, motion levels switched off in the options, hidden types, deleted elements), and devices
+    left without entities."""
+    ent_reg = er.async_get(hass)
+    keep = entry.runtime_data.unique_ids
+    for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent.platform == DOMAIN and (ent.domain, ent.unique_id) not in keep:
+            _LOGGER.debug("Removing %s: no such Larnitech entity any more", ent.entity_id)
+            ent_reg.async_remove(ent.entity_id)
+    dev_reg = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        if device.id == entry.runtime_data.hub_device_id:
+            continue
+        if not er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
+            dev_reg.async_remove_device(device.id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) -> bool:

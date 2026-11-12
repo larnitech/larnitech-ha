@@ -1,4 +1,4 @@
-"""Wall switches, remotes and IR receivers: every status change is an HA event."""
+"""Wall switches: every status change is an HA event."""
 from __future__ import annotations
 
 from typing import Any

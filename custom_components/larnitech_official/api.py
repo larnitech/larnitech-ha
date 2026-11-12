@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from typing import Any
 
@@ -28,6 +29,9 @@ HEARTBEAT = 30
 RECONNECT_MIN = 2
 RECONNECT_MAX = 60
 CONFIRM_DELAY = 0.5
+# element attributes from the project (logic-get) that get-devices does not report: the unit and value
+# type of a virtual sensor
+LOGIC_ATTRS = ("dim", "vtype", "prf")
 
 
 class LarnitechError(Exception):
@@ -215,6 +219,9 @@ class LarnitechClient:
         try:
             data = json.loads(text)
         except ValueError:
+            if text.startswith("<") and self._pending and self._pending[0] == "logic-get" and not self._pending[1].done():
+                self._pending[1].set_result({"response": "logic-get", "_text": text})
+                return
             _LOGGER.debug("Non-JSON message from controller: %s", text[:200])
             return
         if not isinstance(data, dict):
@@ -322,6 +329,7 @@ class LarnitechClient:
             if addr in self.owned:
                 dev["ha-owned"] = True
             found[addr] = dev
+        await self._add_logic_attrs(found)
         if self.devices:
             # keep the same dict objects so entities keep their reference
             new: set[str] = set()
@@ -341,6 +349,22 @@ class LarnitechClient:
         else:
             self.devices = found
         return self.devices
+
+    async def _add_logic_attrs(self, devices: dict[str, dict[str, Any]]) -> None:
+        """Add the attributes in LOGIC_ATTRS from the project XML; without them the elements still work."""
+        if not any(d.get("type") == "virtual" for d in devices.values()):
+            return
+        try:
+            reply = await self.request({"request": "logic-get"})
+        except LarnitechConnectionError:
+            raise
+        except LarnitechError as err:
+            _LOGGER.debug("logic-get failed: %s", err)
+            return
+        for addr, attrs in parse_logic_attrs(reply.get("xml") or reply.get("logic") or reply.get("_text") or "").items():
+            if addr in devices:
+                for key, value in attrs.items():
+                    devices[addr].setdefault(key, value)
 
     async def subscribe_all(self) -> None:
         for addr in list(self.devices):
@@ -367,6 +391,24 @@ class LarnitechClient:
         # the controller answers "success" also for fields it ignores (target, mode or automation of a
         # fancoil or heating valve without sensors): read the real status back so HA does not keep them
         self._schedule_refresh(addr, CONFIRM_DELAY)
+
+
+def parse_logic_attrs(text: str) -> dict[str, dict[str, str]]:
+    """addr -> the LOGIC_ATTRS of each item in the project XML."""
+    if not text:
+        return {}
+    try:
+        root = ET.fromstring(text.encode("utf-8") if isinstance(text, str) else text)
+    except ET.ParseError as err:
+        _LOGGER.debug("Cannot parse the project XML: %s", err)
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for item in root.iter("item"):
+        addr = item.get("addr")
+        attrs = {k: item.get(k) for k in LOGIC_ATTRS if item.get(k) is not None}
+        if addr and attrs:
+            result[addr] = attrs
+    return result
 
 
 def _is_error(reply: dict[str, Any]) -> bool:
