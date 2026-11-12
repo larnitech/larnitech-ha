@@ -9,13 +9,14 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 
   | Home Assistant entity | Larnitech element |
   |---|---|
-  | light | lamp, dimmer-lamp or rgb-lamp |
+  | light | lamp, dimmer-lamp (with colour temperature for tunable-white lights) or rgb-lamp |
   | switch, input_boolean, lock, siren, script, automation | lamp |
   | fan | lamp or dimmer-lamp |
   | cover | blinds |
-  | climate | conditioner or valve-heating |
+  | climate | conditioner or valve-heating (the conditioner setpoint is in whole degrees: 25.5 shows as 26) |
   | binary_sensor | motion-sensor, leak-sensor or door-sensor |
-  | sensor: temperature, humidity, illuminance, CO₂ | temperature-, humidity-, illumination-, co2-sensor |
+  | sensor: temperature, humidity, CO₂ | temperature-, humidity-, co2-sensor |
+  | sensor: illuminance (lx) | virtual text, for example "850 lx" (the illumination sensor is a relative level in %, at most 127.99) |
   | sensor: power, voltage, frequency | power-sensor (W), voltage-sensor (V), freq-sensor (Hz) |
   | sensor: battery or unit % | percent-sensor (0–100 %) |
   | other numeric sensor, input_number, number | virtual sensor with the unit (−128…127.99), else text |

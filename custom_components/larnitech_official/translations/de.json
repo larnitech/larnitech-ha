@@ -89,7 +89,7 @@
         "virtual-text": "Text (Wert und Einheit)",
         "temperature-sensor": "Temperatursensor",
         "humidity-sensor": "Feuchtesensor",
-        "illumination-sensor": "Helligkeitssensor",
+        "illumination-sensor": "Helligkeitssensor (relativer Wert in %, höchstens 127,99)",
         "co2-sensor": "CO₂-Sensor",
         "power-sensor": "Leistungssensor (W)",
         "voltage-sensor": "Spannungssensor (V)",

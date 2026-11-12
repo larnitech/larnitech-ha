@@ -101,6 +101,10 @@ GENERIC_NUMERIC = ["percent-sensor", "float-sensor", VIRTUAL_SENSOR, VIRTUAL_TEX
 NUMERIC_DOMAINS = ("sensor", "input_number", "number")
 TEXT_DOMAINS = ("input_text", "text", "input_select", "select", "device_tracker", "person")
 VIRTUAL_MAX = 127.99
+# shown as text unless chosen otherwise: energy totals outgrow the 16-bit counter quickly, and the
+# illumination sensor is a relative 8.8 level that the app shows in % (at most 127.99), while lux
+# readings run to thousands and a virtual sensor cannot hold them either
+TEXT_BY_DEFAULT = ("energy", "illuminance")
 
 
 def _unit(state: State) -> str:
@@ -119,6 +123,39 @@ def is_numeric(state: State) -> bool:
     if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
         return bool(a.get("unit_of_measurement") or a.get("state_class"))
     return False
+
+
+# A tunable-white lamp is a dimmer-lamp with two channels, as on real Larnitech dimmers: the status
+# is state, level (0..250), colour temperature (0..250, 0 = cold, 250 = warm).
+CT_CHANNELS = "2"
+CT_MIN_K = 2000
+CT_MAX_K = 6500
+
+
+def has_color_temp(state: State | None) -> bool:
+    """A light with colour temperature and no colour: exported as a tunable-white dimmer-lamp."""
+    if state is None or state.domain != "light":
+        return False
+    modes = set(state.attributes.get("supported_color_modes") or [])
+    return "color_temp" in modes and not modes & {"hs", "rgb", "rgbw", "rgbww", "xy"}
+
+
+def _ct_range(state: State) -> tuple[float, float]:
+    a = state.attributes
+    low = _num(a.get("min_color_temp_kelvin")) or CT_MIN_K
+    high = _num(a.get("max_color_temp_kelvin")) or CT_MAX_K
+    return (low, high) if high > low else (CT_MIN_K, CT_MAX_K)
+
+
+def _ct_byte(state: State, kelvin: float) -> int:
+    """Kelvin as the Larnitech colour temperature byte, across the entity's own range."""
+    low, high = _ct_range(state)
+    return round((high - max(low, min(high, kelvin))) * 250 / (high - low))
+
+
+def _ct_kelvin(state: State, code: int) -> int:
+    low, high = _ct_range(state)
+    return round(high - (high - low) * min(code, 250) / 250)
 
 
 def type_choices(state: State) -> list[str]:
@@ -163,10 +200,9 @@ def larnitech_type(state: State) -> str | None:
     if domain in NUMERIC_DOMAINS:
         if not is_numeric(state):
             return VIRTUAL_TEXT if domain == "sensor" else None
-        if domain == "sensor" and dclass in DEDICATED_SENSORS and dclass != "energy":
-            # energy totals outgrow the 16-bit counter quickly: shown as text unless chosen otherwise
+        if domain == "sensor" and dclass in DEDICATED_SENSORS and dclass not in TEXT_BY_DEFAULT:
             return DEDICATED_SENSORS[dclass]
-        if domain == "sensor" and dclass == "energy":
+        if domain == "sensor" and dclass in TEXT_BY_DEFAULT:
             return VIRTUAL_TEXT
         return default_numeric(state)
     if domain in TEXT_DOMAINS:
@@ -190,6 +226,8 @@ def pnp_fields(kind: str, state: State | None, known: dict[str, str] | None = No
         return fields
     if kind == VIRTUAL_TEXT:
         return {"type": "virtual", "sub-type": "text", "length": "0"}
+    if kind == "dimmer-lamp" and (has_color_temp(state) if state is not None else (known or {}).get("channels") == CT_CHANNELS):
+        return {"type": kind, "channels": CT_CHANNELS}
     return {"type": kind}
 
 
@@ -209,8 +247,15 @@ def _text(state: State) -> str:
 # conditioner byte 0, bits 4-7
 COND_MODES = {"fan_only": 0, "cool": 1, "dry": 2, "heat": 3, "heat_cool": 4, "auto": 4}
 COND_T_MIN = 16  # byte 1 is the setpoint minus t-min; elements created through the plugin API use 16
+# The conditioner status has whole degrees only (byte 1 is an integer, the controller truncates a
+# fractional "target"), so a half-degree setpoint is shown rounded half up: 25.5 -> 26.
 # conditioner byte 4, bits 0-3: airflow
 AIRFLOW = {"auto": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def _cond_setpoint(value: float) -> int:
+    """A Home Assistant setpoint in whole degrees as the conditioner shows it (half up, not banker's)."""
+    return int(value + 0.5) if value >= 0 else -int(-value + 0.5)
 
 
 def _airflow(fan_mode: Any) -> int:
@@ -255,6 +300,10 @@ def encode(kind: str, state: State, prev: list[int] | None = None) -> str | None
             level = round(bri * 250 / 255) if bri else None
         if level is None:
             level = prev[1] if len(prev) >= 2 and not on else 0
+        if has_color_temp(state):
+            kelvin = _num(a.get("color_temp_kelvin"))
+            ct = _ct_byte(state, kelvin) if kelvin else (prev[2] if len(prev) >= 3 else 125)
+            return _hex([1 if on else 0, level, ct])
         return _hex([1 if on else 0, level])
     if kind == "rgb-lamp":
         # bytes: state, V (brightness), S (saturation), H (hue), each 0..250
@@ -288,7 +337,7 @@ def encode(kind: str, state: State, prev: list[int] | None = None) -> str | None
             mode = COND_MODES[s]
         else:
             mode = prev[0] >> 4 if prev else 4
-        t = max(0, min(255, round(target) - COND_T_MIN)) if target is not None else (prev[1] if len(prev) >= 2 else 8)
+        t = max(0, min(255, _cond_setpoint(target) - COND_T_MIN)) if target is not None else (prev[1] if len(prev) >= 2 else 8)
         vanes = prev[3] if len(prev) >= 4 else 0
         return _hex([(0 if s == "off" else 1) | mode << 4, t, 0, vanes, _airflow(a.get("fan_mode")), 0])
     if kind == VIRTUAL_TEXT:
@@ -347,7 +396,13 @@ def decode(kind: str, state: State, hexstatus: str) -> list[tuple[str, str, dict
             return [(domain, "turn_off", eid)]
         if domain == "fan":
             return [("fan", "turn_on", {**eid, "percentage": max(1, round(b[1] / 2.5))})]
-        return [("light", "turn_on", {**eid, "brightness": max(1, round(b[1] * 255 / 250))})]
+        data = {**eid, "brightness": max(1, round(b[1] * 255 / 250))}
+        if len(b) >= 3 and b[2] <= 250 and has_color_temp(state):
+            kelvin = _num(state.attributes.get("color_temp_kelvin"))
+            # only a real change: the byte is coarser than kelvin, and a light that is off has none
+            if kelvin is None or abs(_ct_byte(state, kelvin) - b[2]) > 1:
+                data["color_temp_kelvin"] = _ct_kelvin(state, b[2])
+        return [("light", "turn_on", data)]
     if kind == "rgb-lamp" and len(b) >= 4:
         if b[0] & 1 == 0:
             return [("light", "turn_off", eid)]
@@ -377,29 +432,39 @@ def decode(kind: str, state: State, hexstatus: str) -> list[tuple[str, str, dict
         mode = "heat" if "heat" in modes or not modes else next((m for m in modes if m != "off"), "heat")
         target = _parse_temp(b[1], b[2]) if len(b) >= 3 else None
         current = _num(state.attributes.get("temperature"))
-        if target is None or (current is not None and abs(target - current) < 0.25):
-            return [("climate", "set_hvac_mode", {**eid, "hvac_mode": mode})]
-        return [("climate", "set_temperature", {**eid, "hvac_mode": mode, "temperature": target})]
+        # the mode is its own call: many integrations ignore hvac_mode in set_temperature
+        calls = [] if state.state == mode else [("climate", "set_hvac_mode", {**eid, "hvac_mode": mode})]
+        if target is not None and (current is None or abs(target - current) >= 0.25):
+            calls.append(("climate", "set_temperature", {**eid, "temperature": target}))
+        return calls
     if kind == "conditioner" and len(b) >= 2:
         if b[0] & 1 == 0:
             return [("climate", "set_hvac_mode", {**eid, "hvac_mode": "off"})]
-        modes = state.attributes.get("hvac_modes") or []
+        a = state.attributes
+        modes = a.get("hvac_modes") or []
         wanted = {0: "fan_only", 1: "cool", 2: "dry", 3: "heat", 4: "heat_cool"}.get(b[0] >> 4, "heat_cool")
         if wanted == "heat_cool" and wanted not in modes:
             wanted = "auto"
         mode = wanted if wanted in modes or not modes else next((m for m in modes if m != "off"), wanted)
+        calls = []
+        # The mode (and turning on) is its own call: Home Assistant only hands hvac_mode in
+        # set_temperature to the entity, and many integrations ignore it there.
+        if state.state != mode:
+            calls.append(("climate", "set_hvac_mode", {**eid, "hvac_mode": mode}))
         target = b[1] + COND_T_MIN
-        if mode == "heat_cool" and state.attributes.get("target_temp_low") is not None:
-            low = _num(state.attributes.get("target_temp_low")) or target
-            high = _num(state.attributes.get("target_temp_high")) or target
-            span = max(1, high - low)
-            temps = {"target_temp_low": target, "target_temp_high": target + span}
-        else:
-            temps = {"temperature": target}
-        calls = [("climate", "set_temperature", {**eid, "hvac_mode": mode, **temps})]
-        if mode in ("fan_only", "dry"):
+        if mode not in ("fan_only", "dry"):
             # not every climate takes a setpoint in these modes
-            calls = [("climate", "set_hvac_mode", {**eid, "hvac_mode": mode})]
+            if mode == "heat_cool" and a.get("target_temp_low") is not None:
+                low = _num(a.get("target_temp_low"))
+                high = _num(a.get("target_temp_high"))
+                if low is None or _cond_setpoint(low) != target:
+                    span = max(1, (high or target) - (low or target))
+                    calls.append(("climate", "set_temperature", {**eid, "target_temp_low": target, "target_temp_high": target + span}))
+            else:
+                current = _num(a.get("temperature"))
+                # the setpoint comes back in whole degrees: keep 25.5 in HA while Larnitech shows 26
+                if current is None or _cond_setpoint(current) != target:
+                    calls.append(("climate", "set_temperature", {**eid, "temperature": target}))
         fan_modes = state.attributes.get("fan_modes") or []
         if len(b) >= 5 and fan_modes:
             code = b[4] & 0x0F
@@ -420,6 +485,15 @@ def decode(kind: str, state: State, hexstatus: str) -> list[tuple[str, str, dict
                     calls.append(("climate", "set_fan_mode", {**eid, "fan_mode": fan}))
         return calls
     return []
+
+
+def complete_status(status: str, last: str) -> str:
+    """A hex status-set reaches the plugin as sent, possibly only the first bytes: the rest is the
+    status the element has now (the JSON form always arrives complete)."""
+    new, prev = _parse_hex(status), _parse_hex(last)
+    if new and len(new) < len(prev):
+        return _hex(new + prev[len(new):])
+    return status
 
 
 def addr_key(entity_id: str) -> str:
@@ -501,6 +575,11 @@ class EntityBridge:
             return choice
         known = self._known.get(eid)
         if known and not choice:
+            if (known["type"] == "illumination-sensor" and state is not None
+                    and state.attributes.get(ATTR_DEVICE_CLASS) == "illuminance"):
+                # exported by 1.2.2 or older, shown in % and capped at 127.99: becomes the new default.
+                # The element keeps its address (same addr-key).
+                return larnitech_type(state) or known["type"]
             return known["type"]
         return larnitech_type(state) if state is not None else (known or {}).get("type")
 
@@ -556,8 +635,9 @@ class EntityBridge:
             name = name[:60]
             fields = pnp_fields(kind, state if usable else None, known)
             record = {"type": kind, "name": name}
-            if fields.get("dim"):
-                record["dim"] = fields["dim"]
+            for extra in ("dim", "channels"):
+                if fields.get(extra) and (extra == "dim" or kind == "dimmer-lamp"):
+                    record[extra] = fields[extra]
             if known != record:
                 self._known[eid] = record
                 changed = True
@@ -631,7 +711,12 @@ class EntityBridge:
             known = self._known.get(eid, {})
             name = known.get("name", eid)
             fields = pnp_fields(kind, None, known)
-            self._known[eid] = {"type": kind, "name": name, **({"dim": fields["dim"]} if fields.get("dim") else {})}
+            record = {"type": kind, "name": name}
+            if fields.get("dim"):
+                record["dim"] = fields["dim"]
+            if kind == "dimmer-lamp" and fields.get("channels"):
+                record["channels"] = fields["channels"]
+            self._known[eid] = record
             entries.append({"addr-key": key, "name": name, **fields})
         await self._store.async_save({"entities": self._known})
         try:
@@ -667,7 +752,10 @@ class EntityBridge:
         state = self.hass.states.get(self.entities[key])
         if state is None:
             return
-        calls = decode(self.kinds[key], state, status)
+        kind = self.kinds[key]
+        if kind == "conditioner":
+            status = complete_status(status, self._last.get(key, ""))
+        calls = decode(kind, state, status)
         _LOGGER.debug("Larnitech command for %s: %s -> %s", state.entity_id, status, calls)
         for domain, service, data in calls:
             try:
