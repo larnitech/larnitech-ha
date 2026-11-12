@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from homeassistant.core import State  # noqa: E402
 
 from custom_components.larnitech_official.bridge import (  # noqa: E402
-    VIRTUAL_TEXT, _parse_hex, complete_status, decode, encode, larnitech_type, pnp_fields, type_choices,
+    VIRTUAL_TEXT, _parse_hex, _parse_temp, complete_status, decode, encode, larnitech_type, level_to_lux,
+    lux_to_level, pnp_fields, type_choices,
 )
 
 PANEL = {"hvac_modes": ["auto", "heat", "cool", "off"], "fan_modes": ["auto", "low", "medium", "high"],
@@ -143,6 +144,29 @@ def test_lux_is_text_by_default():
     assert larnitech_type(st) == VIRTUAL_TEXT
     assert encode(VIRTUAL_TEXT, st) == "850 lx"
     assert "illumination-sensor" in type_choices(st)
+
+
+
+# --- illuminance on the Larnitech scale (1.2.4) ---
+
+def test_lux_level_round_trip():
+    # getLux() of the Larnitech app (interface/shi3/lt/device-edit-vars.xml)
+    assert abs(level_to_lux(50) - 232.3) < 0.1
+    for lux in (1, 10, 100, 232.3, 850, 1500, 2000):
+        assert abs(level_to_lux(lux_to_level(lux)) - lux) < 0.01, lux
+    assert lux_to_level(0) == 0 and lux_to_level(-5) == 0
+    assert level_to_lux(lux_to_level(5000)) == 2000  # the app shows at most 2000 lx
+
+
+def test_lux_as_illumination_sensor():
+    st = State("sensor.lux", "850", {"device_class": "illuminance", "unit_of_measurement": "lx"})
+    level = _parse_temp(*_parse_hex(encode("illumination-sensor", st)))
+    # what the element holds, and what the app shows with "Lux measuring" on (it prints %.0f)
+    assert 75 < level < 80
+    assert round(level_to_lux(level)) == 850
+    for lux in (3, 40, 400, 1999):
+        st = State("sensor.lux", str(lux), {"device_class": "illuminance", "unit_of_measurement": "lx"})
+        assert round(level_to_lux(_parse_temp(*_parse_hex(encode("illumination-sensor", st))))) == lux, lux
 
 
 if __name__ == "__main__":

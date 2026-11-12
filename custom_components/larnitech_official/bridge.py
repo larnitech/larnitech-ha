@@ -101,10 +101,38 @@ GENERIC_NUMERIC = ["percent-sensor", "float-sensor", VIRTUAL_SENSOR, VIRTUAL_TEX
 NUMERIC_DOMAINS = ("sensor", "input_number", "number")
 TEXT_DOMAINS = ("input_text", "text", "input_select", "select", "device_tracker", "person")
 VIRTUAL_MAX = 127.99
-# shown as text unless chosen otherwise: energy totals outgrow the 16-bit counter quickly, and the
-# illumination sensor is a relative 8.8 level that the app shows in % (at most 127.99), while lux
-# readings run to thousands and a virtual sensor cannot hold them either
+# shown as text unless chosen otherwise: energy totals outgrow the 16-bit counter quickly. Lux is
+# shown exactly as text; the illumination sensor (converted to the Larnitech scale) shows lux only
+# where the app's "Lux measuring" setting is on, and at most 2000 lx
 TEXT_BY_DEFAULT = ("energy", "illuminance")
+
+
+# The Larnitech app shows an illumination sensor in lux when its "Lux measuring" setting is on (a
+# setting of the app on each phone, not of the element). It converts the stored level x (0..100 %)
+# with getLux() in interface/shi3/lt/device-edit-vars.xml:
+#   lux = min(2000, max(0, 0.0027 x^3 - 0.0966 x^2 + 2.8386 x - 5.6581))
+# The polynomial only rises (its derivative has no real root), so it can be inverted exactly.
+LUX_MAX = 2000
+
+
+def level_to_lux(x: float) -> float:
+    return min(LUX_MAX, max(0.0, 0.0027 * x ** 3 - 0.0966 * x ** 2 + 2.8386 * x - 5.6581))
+
+
+def lux_to_level(lux: float) -> float:
+    """The illumination level (0..100 %) that the Larnitech app shows as this many lux."""
+    if lux <= 0:
+        return 0.0
+    low, high = 0.0, 100.0  # level_to_lux(100) is 2000 (the app's limit)
+    if lux >= LUX_MAX:
+        lux = LUX_MAX
+    for _ in range(40):
+        mid = (low + high) / 2
+        if 0.0027 * mid ** 3 - 0.0966 * mid ** 2 + 2.8386 * mid - 5.6581 < lux:
+            low = mid
+        else:
+            high = mid
+    return high
 
 
 def _unit(state: State) -> str:
@@ -359,6 +387,9 @@ def encode(kind: str, state: State, prev: list[int] | None = None) -> str | None
         if kind == "temperature-sensor" and value is not None and a.get("unit_of_measurement") == "°F":
             value = (value - 32) * 5 / 9
         if kind == "illumination-sensor" and value is not None:
+            if _unit(state) == "lx":
+                # the Larnitech scale, which the app shows as these lux with "Lux measuring" on
+                value = lux_to_level(value)
             # the 2-byte sensor format holds at most 127.99 (checked on a controller): brighter reads as that
             value = max(0, min(127.99, value))
         return _hex(_temp(value))

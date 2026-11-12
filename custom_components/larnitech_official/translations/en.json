@@ -89,7 +89,7 @@
         "virtual-text": "Text (value and unit)",
         "temperature-sensor": "Temperature sensor",
         "humidity-sensor": "Humidity sensor",
-        "illumination-sensor": "Illumination sensor (relative level in %, at most 127.99)",
+        "illumination-sensor": "Illumination sensor (Larnitech scale; the app shows lux up to 2000 with “Lux measuring” on)",
         "co2-sensor": "CO₂ sensor",
         "power-sensor": "Power sensor (W)",
         "voltage-sensor": "Voltage sensor (V)",
