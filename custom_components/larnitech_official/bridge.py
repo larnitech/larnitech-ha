@@ -22,6 +22,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 from homeassistant.core import CoreState, Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
@@ -72,8 +73,74 @@ def _num(value: Any) -> float | None:
         return None
 
 
+# Larnitech element types for values that have no dedicated element. Checked on a controller:
+# percent-sensor and float-sensor take a 2-byte 8.8 value like humidity (the firmware's own CPU usage
+# and CPU load elements use them), power/voltage/freq/consumption take a plain 16-bit integer,
+# a virtual sensor takes a signed 8.8 value (-128..127.99) and shows its "dim" unit, and a virtual
+# text element shows any string.
+VIRTUAL_SENSOR = "virtual-sensor"
+VIRTUAL_TEXT = "virtual-text"
+INT_SENSORS = {
+    "power-sensor": {"W": 1, "kW": 1000, "MW": 1_000_000, "mW": 0.001},
+    "voltage-sensor": {"V": 1, "kV": 1000, "mV": 0.001},
+    "freq-sensor": {"Hz": 1, "kHz": 1000, "MHz": 1_000_000},
+    "consumption-sensor": {"kWh": 1, "Wh": 0.001, "MWh": 1000},
+}
+DEDICATED_SENSORS = {
+    "temperature": "temperature-sensor",
+    "humidity": "humidity-sensor",
+    "illuminance": "illumination-sensor",
+    "carbon_dioxide": "co2-sensor",
+    "power": "power-sensor",
+    "voltage": "voltage-sensor",
+    "frequency": "freq-sensor",
+    "energy": "consumption-sensor",
+}
+# the kinds a numeric value can be shown as, in the order offered in the options
+GENERIC_NUMERIC = ["percent-sensor", "float-sensor", VIRTUAL_SENSOR, VIRTUAL_TEXT]
+NUMERIC_DOMAINS = ("sensor", "input_number", "number")
+TEXT_DOMAINS = ("input_text", "text", "input_select", "select", "device_tracker", "person")
+VIRTUAL_MAX = 127.99
+
+
+def _unit(state: State) -> str:
+    return str(state.attributes.get("unit_of_measurement") or "")
+
+
+def is_numeric(state: State) -> bool:
+    """A sensor that has (or is declared to have) a number as its state."""
+    if state.domain in ("input_number", "number"):
+        return True
+    if state.domain != "sensor":
+        return False
+    a = state.attributes
+    if _num(state.state) is not None:
+        return True
+    if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        return bool(a.get("unit_of_measurement") or a.get("state_class"))
+    return False
+
+
+def type_choices(state: State) -> list[str]:
+    """Larnitech kinds the user may choose for an entity; empty when there is nothing to choose."""
+    if not is_numeric(state):
+        return []
+    dedicated = DEDICATED_SENSORS.get(state.attributes.get(ATTR_DEVICE_CLASS)) if state.domain == "sensor" else None
+    return ([dedicated] if dedicated else []) + GENERIC_NUMERIC
+
+
+def default_numeric(state: State) -> str:
+    """Kind for a number that has no dedicated Larnitech element."""
+    if state.attributes.get(ATTR_DEVICE_CLASS) == "battery" or _unit(state) == "%":
+        return "percent-sensor"
+    value = _num(state.state)
+    if value is None or abs(value) <= VIRTUAL_MAX:
+        return VIRTUAL_SENSOR
+    return VIRTUAL_TEXT  # a virtual sensor cannot hold it
+
+
 def larnitech_type(state: State) -> str | None:
-    """Which Larnitech element type an entity becomes, or None if it is not supported."""
+    """Which Larnitech element type an entity becomes automatically, or None if it is not supported."""
     domain = state.domain
     attrs = state.attributes
     dclass = attrs.get(ATTR_DEVICE_CLASS)
@@ -93,13 +160,17 @@ def larnitech_type(state: State) -> str | None:
     if domain == "climate":
         modes = set(attrs.get("hvac_modes") or [])
         return "conditioner" if modes & {"cool", "heat_cool", "auto", "dry", "fan_only"} else "valve-heating"
-    if domain == "sensor":
-        return {
-            "temperature": "temperature-sensor",
-            "humidity": "humidity-sensor",
-            "illuminance": "illumination-sensor",
-            "carbon_dioxide": "co2-sensor",
-        }.get(dclass)
+    if domain in NUMERIC_DOMAINS:
+        if not is_numeric(state):
+            return VIRTUAL_TEXT if domain == "sensor" else None
+        if domain == "sensor" and dclass in DEDICATED_SENSORS and dclass != "energy":
+            # energy totals outgrow the 16-bit counter quickly: shown as text unless chosen otherwise
+            return DEDICATED_SENSORS[dclass]
+        if domain == "sensor" and dclass == "energy":
+            return VIRTUAL_TEXT
+        return default_numeric(state)
+    if domain in TEXT_DOMAINS:
+        return VIRTUAL_TEXT
     if domain == "binary_sensor":
         if dclass in ("motion", "occupancy", "presence", "moving"):
             return "motion-sensor"
@@ -107,6 +178,32 @@ def larnitech_type(state: State) -> str | None:
             return "leak-sensor"
         return "door-sensor"
     return None
+
+
+def pnp_fields(kind: str, state: State | None, known: dict[str, str] | None = None) -> dict[str, str]:
+    """The she-register-pnp fields for a kind (type, and for virtual elements sub-type, unit, length)."""
+    if kind == VIRTUAL_SENSOR:
+        dim = _unit(state) if state is not None else (known or {}).get("dim", "")
+        fields = {"type": "virtual", "sub-type": "sensor", "length": "2"}
+        if dim:
+            fields["dim"] = dim
+        return fields
+    if kind == VIRTUAL_TEXT:
+        return {"type": "virtual", "sub-type": "text", "length": "0"}
+    return {"type": kind}
+
+
+def _fixed88(value: float, low: float, high: float) -> list[int]:
+    v = round(max(low, min(high, value)) * 256) & 0xFFFF
+    return [v & 0xFF, v >> 8]
+
+
+def _text(state: State) -> str:
+    unit = _unit(state)
+    text = f"{state.state} {unit}" if unit and is_numeric(state) else str(state.state)
+    if text.lower().startswith("0x"):
+        text = " " + text  # the controller would read it as hex bytes
+    return text[:200]
 
 
 # conditioner byte 0, bits 4-7
@@ -194,7 +291,21 @@ def encode(kind: str, state: State, prev: list[int] | None = None) -> str | None
         t = max(0, min(255, round(target) - COND_T_MIN)) if target is not None else (prev[1] if len(prev) >= 2 else 8)
         vanes = prev[3] if len(prev) >= 4 else 0
         return _hex([(0 if s == "off" else 1) | mode << 4, t, 0, vanes, _airflow(a.get("fan_mode")), 0])
+    if kind == VIRTUAL_TEXT:
+        return _text(state)
     value = _num(s)
+    if kind in INT_SENSORS:
+        if value is None:
+            return None
+        value *= INT_SENSORS[kind].get(_unit(state), 1)
+        v = max(0, min(0xFFFE, round(value)))
+        return _hex([v & 0xFF, v >> 8])
+    if kind == "percent-sensor":
+        return None if value is None else _hex(_fixed88(value, 0, 100))
+    if kind == "float-sensor":
+        return None if value is None else _hex(_fixed88(value, 0, 255.99))
+    if kind == VIRTUAL_SENSOR:
+        return None if value is None else _hex(_fixed88(value, -VIRTUAL_MAX, VIRTUAL_MAX))
     if kind in ("temperature-sensor", "humidity-sensor", "illumination-sensor"):
         if kind == "temperature-sensor" and value is not None and a.get("unit_of_measurement") == "°F":
             value = (value - 32) * 5 / 9
@@ -318,15 +429,25 @@ def addr_key(entity_id: str) -> str:
 class EntityBridge:
     """Registers selected HA entities on the controller and keeps them in sync."""
 
-    def __init__(self, hass: HomeAssistant, client: LarnitechClient, entry_id: str, entity_ids: list[str]) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: LarnitechClient,
+        entry_id: str,
+        entity_ids: list[str],
+        chosen: dict[str, str] | None = None,
+    ) -> None:
         self.hass = hass
         self.client = client
+        self.entry_id = entry_id
         self.entity_ids = list(entity_ids)
+        # the element type the user picked in the options, for entities that can be shown several ways
+        self.chosen = dict(chosen or {})
         # what each entity was registered as. The registration is always the complete set, so an
         # entity that is missing for a moment (its integration still loading) must still be sent,
         # or the controller would delete its element and break the scripts that use it.
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, f"{DOMAIN}.{entry_id}.exported")
-        self._known: dict[str, dict[str, str]] = {}  # entity_id -> {"type": ..., "name": ...}
+        self._known: dict[str, dict[str, str]] = {}  # entity_id -> {"type": ..., "name": ..., "dim": ...}
         self._started = asyncio.Event()
         self._unsub_started = None
         self.kinds: dict[str, str] = {}  # addr-key -> larnitech type
@@ -367,6 +488,38 @@ class EntityBridge:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        ir.async_delete_issue(self.hass, DOMAIN, self.issue_id)
+
+    @property
+    def issue_id(self) -> str:
+        return f"export_problems_{self.entry_id}"
+
+    def kind_for(self, eid: str, state: State | None) -> str | None:
+        """The element type for an entity: the user's choice, else the type it was created with, else automatic."""
+        choice = self.chosen.get(eid)
+        if choice and (state is None or choice in type_choices(state)):
+            return choice
+        known = self._known.get(eid)
+        if known and not choice:
+            return known["type"]
+        return larnitech_type(state) if state is not None else (known or {}).get("type")
+
+    @callback
+    def _update_issue(self) -> None:
+        """A repair issue lists the entities that could not become Larnitech elements."""
+        if not self.errors:
+            ir.async_delete_issue(self.hass, DOMAIN, self.issue_id)
+            return
+        lines = "\n".join(f"- {eid}: {err}" for eid, err in sorted(self.errors.items()))
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self.issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="export_problems",
+            translation_placeholders={"entities": lines},
+        )
 
     @property
     def owned_addrs(self) -> set[str]:
@@ -384,41 +537,40 @@ class EntityBridge:
         self.kinds.clear()
         self.entities.clear()
         changed = False
+        previous_errors, self.errors = self.errors, {}
         for eid in self.entity_ids:
             state = self.hass.states.get(eid)
             known = self._known.get(eid)
             usable = state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
-            # keep the type an element was created with: changing it would recreate the element
-            kind = known["type"] if known else (larnitech_type(state) if state is not None else None)
+            # keep the type an element was created with (changing it recreates the element), unless the user chose another
+            kind = self.kind_for(eid, state)
             if kind is None:
                 if state is not None:
-                    if self.errors.get(eid) != "unsupported":
+                    if previous_errors.get(eid) != "unsupported":
                         _LOGGER.warning("%s cannot become a Larnitech element (unsupported kind of entity)", eid)
                     self.errors[eid] = "unsupported"
-                    _LOGGER.debug("%s cannot become a Larnitech element (unsupported kind of entity)", eid)
-                elif not self._started.is_set():
-                    pass  # not loaded yet; registered once Home Assistant has started
                 else:
                     self.errors[eid] = "not found"
                 continue
             name = str(state.attributes.get(ATTR_FRIENDLY_NAME) or eid) if usable else (known or {}).get("name", eid)
             name = name[:60]
-            if known != {"type": kind, "name": name}:
-                self._known[eid] = {"type": kind, "name": name}
+            fields = pnp_fields(kind, state if usable else None, known)
+            record = {"type": kind, "name": name}
+            if fields.get("dim"):
+                record["dim"] = fields["dim"]
+            if known != record:
+                self._known[eid] = record
                 changed = True
-            self.errors.pop(eid, None)
             key = addr_key(eid)
             self.kinds[key] = kind
             self.entities[key] = eid
-            entries.append({"addr-key": key, "type": kind, "name": name})
+            entries.append({"addr-key": key, "name": name, **fields})
         for eid in [e for e in self._known if e not in self.entity_ids]:
             del self._known[eid]
             changed = True
         if changed:
             await self._store.async_save({"entities": self._known})
-        if not entries and not self._started.is_set() and self.entity_ids:
-            # nothing known yet and nothing loaded: do not wipe the controller's elements, wait for start
-            return
+        self._update_issue()
         try:
             await self.client.request({"request": "setup", "appId": APP_ID})
             # the list is the complete set: elements registered earlier and missing now are removed
@@ -454,13 +606,16 @@ class EntityBridge:
             for err in msg.get("error") or []:
                 key = str(err.get("addr-key"))
                 eid = self.entities.get(key, key)
-                self.errors[eid] = str(err.get("description") or err.get("code"))
-                _LOGGER.warning("Controller refused %s as %s: %s", eid, self.kinds.get(key), self.errors[eid])
+                reason = str(err.get("description") or err.get("message") or err.get("code"))
+                _LOGGER.warning("Controller refused %s as %s: %s", eid, self.kinds.get(key), reason)
                 # leak sensors are not known to every firmware: retry as a door sensor
                 if self.kinds.get(key) == "leak-sensor":
                     self.kinds[key] = "door-sensor"
                     self.hass.async_create_task(self._reregister())
+                else:
+                    self.errors[eid] = f"refused by the controller ({reason})"
             self._mark_owned()
+            self._update_issue()
 
     def _mark_owned(self) -> None:
         for addr in self.addrs.values():
@@ -473,9 +628,11 @@ class EntityBridge:
         entries = []
         for key, kind in self.kinds.items():
             eid = self.entities[key]
-            name = self._known.get(eid, {}).get("name", eid)
-            self._known[eid] = {"type": kind, "name": name}
-            entries.append({"addr-key": key, "type": kind, "name": name})
+            known = self._known.get(eid, {})
+            name = known.get("name", eid)
+            fields = pnp_fields(kind, None, known)
+            self._known[eid] = {"type": kind, "name": name, **({"dim": fields["dim"]} if fields.get("dim") else {})}
+            entries.append({"addr-key": key, "name": name, **fields})
         await self._store.async_save({"entities": self._known})
         try:
             await self.client.request({"request": "she-register-pnp", "pnp": entries})

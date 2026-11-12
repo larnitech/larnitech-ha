@@ -6,6 +6,22 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
 - **Everything from the project**: lights, dimmers, RGB and tunable white, relays and water valves, blinds and gates, climate controllers (modes, heat/cool setpoints, automations as presets), air conditioners, fancoils, heating valves, ventilation, temperature / humidity / illuminance / CO₂ sensors, motion, door and leak sensors, light scenes, scripts, wall switches and remotes (as events for automations).
 - **Rooms**: every element becomes a Home Assistant device in the area named after its Larnitech room.
 - **Home Assistant devices in Larnitech**: pick any lights, switches, covers, climate, locks, fans and sensors in the integration options and they become real Larnitech elements, visible in the Larnitech app and usable in Larnitech scripts and Blockly.
+
+  | Home Assistant entity | Larnitech element |
+  |---|---|
+  | light | lamp, dimmer-lamp or rgb-lamp |
+  | switch, input_boolean, lock, siren, script, automation | lamp |
+  | fan | lamp or dimmer-lamp |
+  | cover | blinds |
+  | climate | conditioner or valve-heating |
+  | binary_sensor | motion-sensor, leak-sensor or door-sensor |
+  | sensor: temperature, humidity, illuminance, CO₂ | temperature-, humidity-, illumination-, co2-sensor |
+  | sensor: power, voltage, frequency | power-sensor (W), voltage-sensor (V), freq-sensor (Hz) |
+  | sensor: battery or unit % | percent-sensor (0–100 %) |
+  | other numeric sensor, input_number, number | virtual sensor with the unit (−128…127.99), else text |
+  | energy, non-numeric sensor, input_text, input_select, select, device_tracker, person | virtual text (value and unit) |
+
+  For numeric sensors the options let you choose how they appear in Larnitech: the dedicated sensor, percent sensor, number sensor (0–255.99), virtual sensor with unit, or text. Entities that cannot be exported (for example, an entity that no longer exists) are listed in the options and in *Settings → Repairs*.
 - Remote access through `SERIAL.in.larnitech.com:8443` works too.
 
 ## Install
@@ -35,6 +51,7 @@ Automations and scripts need updating: the services are now `larnitech_official.
 ## Options
 
 - **Home Assistant devices in Larnitech**: entities that are registered on the controller as Larnitech elements.
+- **Show in Larnitech as**: the next step, shown when a selected entity is a number, sets the Larnitech element type for each such entity. You can change it later; the element keeps its address.
 - **Hide element types**: Larnitech element types that are not added to Home Assistant.
 
 ## Services
@@ -48,7 +65,7 @@ Wall switches, remotes and IR receivers fire `larnitech_official_event` events a
 
 # Larnitech для Home Assistant
 
-Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly.
+Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly. Числовые датчики (батарея, загрузка процессора, давление, мощность и т. д.) можно показать как датчик процентов, числовой датчик, виртуальный датчик с единицей измерения или текст; тип выбирается на следующем шаге настроек.
 
 Установка: HACS → поиск **Larnitech** (когда интеграция появится в списке HACS) → установить → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
 

@@ -9,6 +9,8 @@ CONF_KEY = "key"
 CONF_SERIAL = "serial"
 CONF_IGNORED_TYPES = "ignored_types"
 CONF_EXPORT_ENTITIES = "export_entities"
+# entity_id -> Larnitech element type chosen in the options (for entities that can be shown several ways)
+CONF_EXPORT_TYPES = "export_types"
 
 EVENT_LARNITECH = "larnitech_official_event"
 

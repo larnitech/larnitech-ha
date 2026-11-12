@@ -44,7 +44,12 @@
         "data_description": {
           "ignored_types": "Elemente dieser Typen werden nicht in Home Assistant angelegt.",
           "export_entities": "Diese Entitäten werden zu Larnitech-Elementen: Sie erscheinen in der Larnitech-App und können in Larnitech-Skripten und Blockly verwendet werden. Befehle aus Larnitech steuern sie hier."
-        }
+        },
+        "description": "Wählen Sie, welche Home-Assistant-Entitäten zu Larnitech-Elementen werden.{problems}"
+      },
+      "types": {
+        "title": "Darstellung der Werte in Larnitech",
+        "description": "Diese Entitäten lassen sich in Larnitech auf mehrere Arten darstellen. Wählen Sie für jede einen Elementtyp. Ein Prozentsensor fasst 0–100 %, ein Zahlensensor 0–255,99, ein virtueller Sensor −128…127,99 mit der Einheit des Werts, Text zeigt jeden Wert mit Einheit (in Skripten nicht als Zahl vergleichbar).\n\n{entities}"
       }
     }
   },
@@ -73,6 +78,30 @@
       "script_active": {
         "name": "Aktiv"
       }
+    }
+  },
+  "selector": {
+    "export_type": {
+      "options": {
+        "percent-sensor": "Prozentsensor (0–100 %)",
+        "float-sensor": "Zahlensensor (0–255,99)",
+        "virtual-sensor": "Virtueller Sensor mit Einheit (−128…127,99)",
+        "virtual-text": "Text (Wert und Einheit)",
+        "temperature-sensor": "Temperatursensor",
+        "humidity-sensor": "Feuchtesensor",
+        "illumination-sensor": "Helligkeitssensor",
+        "co2-sensor": "CO₂-Sensor",
+        "power-sensor": "Leistungssensor (W)",
+        "voltage-sensor": "Spannungssensor (V)",
+        "freq-sensor": "Frequenzsensor (Hz)",
+        "consumption-sensor": "Energiezähler (ganze kWh)"
+      }
+    }
+  },
+  "issues": {
+    "export_problems": {
+      "title": "Einige Entitäten werden in Larnitech nicht angezeigt",
+      "description": "Diese Entitäten wurden für Larnitech ausgewählt, sind aber keine Elemente auf dem Controller:\n\n{entities}\n\nÄndern Sie die Auswahl oder den Elementtyp in den Optionen der Larnitech-Integration."
     }
   }
 }

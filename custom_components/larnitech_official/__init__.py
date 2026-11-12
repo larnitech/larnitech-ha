@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
 from .bridge import EntityBridge
-from .const import APP_ID, CONF_EXPORT_ENTITIES, CONF_KEY, CONF_SERIAL, DOMAIN, MANUFACTURER
+from .const import APP_ID, CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_KEY, CONF_SERIAL, DOMAIN, MANUFACTURER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,7 +52,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) ->
     client = LarnitechClient(
         async_get_clientsession(hass), entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data[CONF_KEY]
     )
-    bridge = EntityBridge(hass, client, entry.entry_id, entry.options.get(CONF_EXPORT_ENTITIES, []))
+    bridge = EntityBridge(
+        hass, client, entry.entry_id, entry.options.get(CONF_EXPORT_ENTITIES, []), entry.options.get(CONF_EXPORT_TYPES, {})
+    )
     await bridge.async_start()
     try:
         await client.start()

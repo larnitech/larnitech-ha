@@ -44,7 +44,12 @@
         "data_description": {
           "ignored_types": "Elements of these types are not added to Home Assistant.",
           "export_entities": "These entities become Larnitech elements: they appear in the Larnitech app and can be used in Larnitech scripts and Blockly. Commands from Larnitech control them here."
-        }
+        },
+        "description": "Choose which Home Assistant entities become Larnitech elements.{problems}"
+      },
+      "types": {
+        "title": "How to show values in Larnitech",
+        "description": "These entities can be shown in Larnitech in several ways. Choose an element type for each one. A percent sensor holds 0–100 %, a number sensor 0–255.99, a virtual sensor −128…127.99 with the unit of the value, text shows any value with its unit (not usable for comparisons in scripts).\n\n{entities}"
       }
     }
   },
@@ -73,6 +78,30 @@
       "script_active": {
         "name": "Active"
       }
+    }
+  },
+  "selector": {
+    "export_type": {
+      "options": {
+        "percent-sensor": "Percent sensor (0–100 %)",
+        "float-sensor": "Number sensor (0–255.99)",
+        "virtual-sensor": "Virtual sensor with unit (−128…127.99)",
+        "virtual-text": "Text (value and unit)",
+        "temperature-sensor": "Temperature sensor",
+        "humidity-sensor": "Humidity sensor",
+        "illumination-sensor": "Illumination sensor",
+        "co2-sensor": "CO₂ sensor",
+        "power-sensor": "Power sensor (W)",
+        "voltage-sensor": "Voltage sensor (V)",
+        "freq-sensor": "Frequency sensor (Hz)",
+        "consumption-sensor": "Energy counter (whole kWh)"
+      }
+    }
+  },
+  "issues": {
+    "export_problems": {
+      "title": "Some entities are not shown in Larnitech",
+      "description": "These entities were selected for Larnitech but are not elements on the controller:\n\n{entities}\n\nChange the selection or the element type in the Larnitech integration options."
     }
   }
 }

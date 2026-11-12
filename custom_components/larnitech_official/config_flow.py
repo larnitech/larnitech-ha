@@ -18,7 +18,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
 from .entity import is_own, kind_of
-from .const import CONF_EXPORT_ENTITIES, CONF_IGNORED_TYPES, CONF_KEY, CONF_SERIAL, DEFAULT_PORT, DOMAIN
+from .bridge import type_choices
+from .const import CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_IGNORED_TYPES, CONF_KEY, CONF_SERIAL, DEFAULT_PORT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,10 +121,23 @@ class LarnitechConfigFlow(ConfigFlow, domain=DOMAIN):
         return LarnitechOptionsFlow()
 
 
+EXPORT_DOMAINS = [
+    "light", "switch", "input_boolean", "fan", "cover", "climate", "lock", "sensor", "binary_sensor",
+    "siren", "script", "automation", "input_number", "number", "input_text", "text", "input_select",
+    "select", "device_tracker", "person",
+]
+
+
 class LarnitechOptionsFlow(OptionsFlow):
+    def __init__(self) -> None:
+        self._options: dict[str, Any] = {}
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            self._options = {**self.config_entry.options, **user_input}
+            if self._choosable():
+                return await self.async_step_types()
+            return self._finish({})
         client = self.config_entry.runtime_data.client
         types = sorted({kind_of(d) for d in client.devices.values() if d.get("type") and not is_own(d)})
         current = self.config_entry.options.get(CONF_IGNORED_TYPES, [])
@@ -132,8 +146,7 @@ class LarnitechOptionsFlow(OptionsFlow):
             {
                 vol.Optional(CONF_EXPORT_ENTITIES, default=exported): selector.EntitySelector(
                     selector.EntitySelectorConfig(
-                        domain=["light", "switch", "input_boolean", "fan", "cover", "climate", "lock",
-                                "sensor", "binary_sensor", "siren", "script", "automation"],
+                        domain=EXPORT_DOMAINS,
                         multiple=True,
                         exclude_entities=self._own_entities(),
                     )
@@ -143,8 +156,64 @@ class LarnitechOptionsFlow(OptionsFlow):
                 ),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init", data_schema=schema, description_placeholders={"problems": self._problems()}
+        )
 
+    async def async_step_types(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """For each exported entity that can be shown in several ways, the Larnitech element type."""
+        choosable = self._choosable()
+        if user_input is not None:
+            return self._finish({eid: kind for eid, kind in user_input.items() if eid in choosable})
+        saved = self.config_entry.options.get(CONF_EXPORT_TYPES, {})
+        bridge = self.config_entry.runtime_data.bridge
+        fields: dict[Any, Any] = {}
+        lines = []
+        for eid, choices in choosable.items():
+            state = self.hass.states.get(eid)
+            current = bridge.kind_for(eid, state)
+            default = saved.get(eid) if saved.get(eid) in choices else (current if current in choices else choices[0])
+            fields[vol.Required(eid, default=default)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=choices,
+                    translation_key="export_type",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+            if state is not None:
+                name = state.attributes.get("friendly_name") or eid
+                unit = state.attributes.get("unit_of_measurement") or ""
+                lines.append(f"- {eid}: {name}, {state.state} {unit}".rstrip())
+        return self.async_show_form(
+            step_id="types",
+            data_schema=vol.Schema(fields),
+            description_placeholders={"entities": "\n".join(lines)},
+        )
+
+    def _choosable(self) -> dict[str, list[str]]:
+        result: dict[str, list[str]] = {}
+        for eid in self._options.get(CONF_EXPORT_ENTITIES, []):
+            state = self.hass.states.get(eid)
+            choices = type_choices(state) if state is not None else []
+            if len(choices) > 1:
+                result[eid] = choices
+        return result
+
+    def _finish(self, chosen: dict[str, str]) -> ConfigFlowResult:
+        exported = set(self._options.get(CONF_EXPORT_ENTITIES, []))
+        saved = self.config_entry.options.get(CONF_EXPORT_TYPES, {})
+        # keep the choice of an entity that is still exported but has no state right now
+        kept = {eid: kind for eid, kind in saved.items() if eid in exported and eid not in chosen
+                and self.hass.states.get(eid) is None}
+        self._options[CONF_EXPORT_TYPES] = {**kept, **chosen}
+        return self.async_create_entry(data=self._options)
+
+    def _problems(self) -> str:
+        """Exported entities that are not Larnitech elements now, one per line."""
+        bridge = self.config_entry.runtime_data.bridge
+        if not bridge.errors:
+            return ""
+        return "\n\n" + "\n".join(f"⚠ {eid}: {err}" for eid, err in sorted(bridge.errors.items()))
     def _own_entities(self) -> list[str]:
         """Entities of this integration: sending them back to the controller would loop."""
         from homeassistant.helpers import entity_registry as er
