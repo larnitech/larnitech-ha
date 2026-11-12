@@ -16,7 +16,7 @@ from custom_components.larnitech_official.decode import (  # noqa: E402
     at_minutes, is_weather, motion_detected, sensor32_value, sun_times, text_value, virtual_sensor_value,
     weather, word_value,
 )
-from custom_components.larnitech_official.entity import kind_of  # noqa: E402
+from custom_components.larnitech_official.entity import is_hidden_system, is_system, kind_of  # noqa: E402
 
 
 # --- 2-byte sensors: API2 gives the raw number for co2 and the types after it ---
@@ -149,6 +149,31 @@ def test_logic_attrs():
     assert parse_logic_attrs(xml) == {"905:11": {"dim": "hPa", "vtype": "uint"}}
     assert parse_logic_attrs("not xml") == {}
     assert parse_logic_attrs("") == {}
+
+
+class _Entry:
+    def __init__(self, **options):
+        self.options = options
+
+
+def test_system_sensors_hidden_by_default():
+    temp = {"addr": "313:95", "type": "temperature-sensor", "system": "yes"}
+    wx = {"addr": "999:9", "type": "virtual", "system": "yes"}
+    lamp = {"addr": "999:20", "type": "virtual", "sub-type": "lamp", "system": "yes"}
+    script = {"addr": "313:250", "type": "script", "system": "yes"}
+    plain = {"addr": "313:15", "type": "temperature-sensor"}
+    assert is_system(temp) and not is_system(plain)
+    off, on = _Entry(), _Entry(system_sensors=True)
+    assert is_hidden_system(off, temp) and is_hidden_system(off, wx)
+    assert not is_hidden_system(on, temp) and not is_hidden_system(on, wx)
+    # controllable system elements stay
+    assert not is_hidden_system(off, lamp) and not is_hidden_system(off, script)
+    assert not is_hidden_system(off, plain)
+
+
+def test_logic_attrs_system():
+    xml = '<smart-house><item addr="313:95" system="yes" type="temperature-sensor"/></smart-house>'
+    assert parse_logic_attrs(xml) == {"313:95": {"system": "yes"}}
 
 
 if __name__ == "__main__":

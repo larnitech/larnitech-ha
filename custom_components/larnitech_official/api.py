@@ -30,8 +30,8 @@ RECONNECT_MIN = 2
 RECONNECT_MAX = 60
 CONFIRM_DELAY = 0.5
 # element attributes from the project (logic-get) that get-devices does not report: the unit and value
-# type of a virtual sensor
-LOGIC_ATTRS = ("dim", "vtype", "prf")
+# type of a virtual sensor, and system="yes"
+LOGIC_ATTRS = ("dim", "vtype", "prf", "system")
 
 
 class LarnitechError(Exception):
@@ -291,7 +291,7 @@ class LarnitechClient:
         task.add_done_callback(self._tasks.discard)
 
     # ---- requests --------------------------------------------------------
-    async def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def request(self, payload: dict[str, Any], timeout: float = REQUEST_TIMEOUT, drop_on_timeout: bool = True) -> dict[str, Any]:
         async with self._lock:
             ws = self._ws
             if ws is None or ws.closed:
@@ -300,11 +300,13 @@ class LarnitechClient:
             self._pending = (payload["request"], fut)
             try:
                 await ws.send_str(json.dumps(payload, ensure_ascii=False))
-                async with asyncio.timeout(REQUEST_TIMEOUT):
+                async with asyncio.timeout(timeout):
                     return await fut
             except (aiohttp.ClientError, ConnectionResetError) as err:
                 raise LarnitechConnectionError(str(err)) from err
             except TimeoutError as err:
+                if not drop_on_timeout:
+                    raise LarnitechError(f"no reply to {payload['request']}") from err
                 # a late reply could be taken for the answer to a later request: start over
                 _LOGGER.warning("No reply to %s from %s, reconnecting", payload["request"], self.host)
                 self._ws = None
@@ -352,10 +354,9 @@ class LarnitechClient:
 
     async def _add_logic_attrs(self, devices: dict[str, dict[str, Any]]) -> None:
         """Add the attributes in LOGIC_ATTRS from the project XML; without them the elements still work."""
-        if not any(d.get("type") == "virtual" for d in devices.values()):
-            return
         try:
-            reply = await self.request({"request": "logic-get"})
+            # a late answer is XML, which is only taken while logic-get waits: no need to reconnect
+            reply = await self.request({"request": "logic-get"}, timeout=10, drop_on_timeout=False)
         except LarnitechConnectionError:
             raise
         except LarnitechError as err:

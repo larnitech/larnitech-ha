@@ -21,7 +21,7 @@ from .entity import is_own, kind_of
 from .bridge import type_choices
 from .const import (
     CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_IGNORED_TYPES, CONF_KEY, CONF_MOTION_LEVEL, CONF_MOTION_THRESHOLD,
-    CONF_SERIAL, DEFAULT_MOTION_THRESHOLD, DEFAULT_PORT, DOMAIN,
+    CONF_SERIAL, CONF_SYSTEM_SENSORS, DEFAULT_MOTION_THRESHOLD, DEFAULT_PORT, DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -167,6 +167,9 @@ class LarnitechOptionsFlow(OptionsFlow):
                 ),
                 vol.Optional(
                     CONF_MOTION_LEVEL, default=self.config_entry.options.get(CONF_MOTION_LEVEL, False)
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_SYSTEM_SENSORS, default=self.config_entry.options.get(CONF_SYSTEM_SENSORS, False)
                 ): selector.BooleanSelector(),
             }
         )

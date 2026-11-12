@@ -41,13 +41,15 @@
           "ignored_types": "Hide element types",
           "export_entities": "Home Assistant devices in Larnitech",
           "motion_threshold": "Motion threshold",
-          "motion_level": "Motion level sensors"
+          "motion_level": "Motion level sensors",
+          "system_sensors": "Add system sensors"
         },
         "data_description": {
           "ignored_types": "Elements of these types are not added to Home Assistant.",
           "export_entities": "These entities become Larnitech elements: they appear in the Larnitech app and can be used in Larnitech scripts and Blockly. Commands from Larnitech control them here.",
           "motion_threshold": "A Larnitech motion sensor reports a motion level from 0 to 100 %. A level above this value counts as motion. Default 15 %.",
-          "motion_level": "Also add a sensor with the motion level in % for each motion sensor, for your own automations."
+          "motion_level": "Also add a sensor with the motion level in % for each motion sensor, for your own automations.",
+          "system_sensors": "Also add the sensors marked as system elements in the project: module temperatures and supply voltages, motor currents, CPU usage and load, weather plugin items. Off by default."
         },
         "description": "Choose which Home Assistant entities become Larnitech elements.{problems}"
       },

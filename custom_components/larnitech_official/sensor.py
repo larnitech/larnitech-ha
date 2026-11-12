@@ -37,7 +37,7 @@ from .const import (
     SUN_TYPES, SWITCH_TYPES, TEXT_TYPES, VIRTUAL_SENSOR_TYPES, WEATHER_TYPES,
 )
 from .decode import at_minutes, sensor32_value, sun_times, text_value, virtual_sensor_value, word_value
-from .entity import LarnitechEntity, is_own, kind_of
+from .entity import LarnitechEntity, is_hidden_system, is_own, kind_of
 
 # kind -> (device class, unit); the value comes from decode.word_value
 SPECS: dict[str, tuple[SensorDeviceClass | None, str | None]] = {
@@ -90,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry, as
     entities: list[SensorEntity] = []
     for dev in entry.runtime_data.client.devices.values():
         kind = kind_of(dev)
-        if is_own(dev) or kind in ignored or kind in SKIP_TYPES:
+        if is_own(dev) or kind in ignored or kind in SKIP_TYPES or is_hidden_system(entry, dev):
             continue
         if kind in SPECS:
             entities.append(LarnitechSensor(entry, dev))

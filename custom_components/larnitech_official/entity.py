@@ -10,7 +10,7 @@ from homeassistant.helpers.entity import Entity
 
 from . import LarnitechConfigEntry
 from .api import LarnitechClient, LarnitechError
-from .const import APP_ID, CONF_IGNORED_TYPES, DOMAIN, MANUFACTURER, SKIP_TYPES
+from .const import APP_ID, CONF_IGNORED_TYPES, CONF_SYSTEM_SENSORS, DOMAIN, MANUFACTURER, SKIP_TYPES, SYSTEM_SENSOR_KINDS
 from .decode import is_weather
 
 # Home Assistant 2026.10 links a device to its hub by device id; "via_device" is removed in 2027.8
@@ -60,8 +60,21 @@ def devices_of(entry: LarnitechConfigEntry, types: set[str]) -> list[dict[str, A
     return [
         d
         for d in entry.runtime_data.client.devices.values()
-        if kind_of(d) in types and kind_of(d) not in ignored and not is_own(d)
+        if kind_of(d) in types and kind_of(d) not in ignored and not is_own(d) and not is_hidden_system(entry, d)
     ]
+
+
+def is_system(device: dict[str, Any]) -> bool:
+    """system="yes" in the project (from logic-get; get-devices does not report it)."""
+    return str(device.get("system", "")).strip().lower() in ("yes", "1", "true")
+
+
+def is_hidden_system(entry: LarnitechConfigEntry, device: dict[str, Any]) -> bool:
+    """A system sensor while the option to add them is off. Only sensors: controllable system elements stay."""
+    if entry.options.get(CONF_SYSTEM_SENSORS, False) or not is_system(device):
+        return False
+    kind = kind_of(device)
+    return kind in SYSTEM_SENSOR_KINDS or device.get("type") in SYSTEM_SENSOR_KINDS
 
 
 def is_own(device: dict[str, Any]) -> bool:

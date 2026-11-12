@@ -62,6 +62,7 @@ Automations and scripts need updating: the services are now `larnitech_official.
 - **Hide element types**: Larnitech element types that are not added to Home Assistant.
 - **Motion threshold**: a motion level above this value counts as motion (default 15 %).
 - **Motion level sensors**: also add a sensor with the motion level in % for each motion sensor (off by default).
+- **Add system sensors**: also add the sensors marked `system="yes"` in the project: module temperatures and supply voltages, motor currents, CPU usage and load, weather plugin items (off by default). Controllable system elements (lamps, scripts) are always added.
 
 ## Services
 
@@ -76,7 +77,7 @@ Wall switches fire `larnitech_official_event` events and appear as event entitie
 
 Локальная интеграция контроллера Larnitech с Home Assistant: все элементы проекта появляются в HA по комнатам, обратная связь мгновенная в обе стороны, без облака и MQTT. В настройках интеграции можно выбрать устройства Home Assistant, которые станут элементами Larnitech и будут доступны в приложении Larnitech, сценариях и Blockly. Числовые датчики (батарея, загрузка процессора, давление, мощность и т. д.) можно показать как датчик процентов, числовой датчик, виртуальный датчик с единицей измерения или текст; тип выбирается на следующем шаге настроек.
 
-Датчик освещённости Larnitech хранит относительный уровень (0–100 %); в HA он показывается в люксах по формуле приложения Larnitech (как в приложении с включённым «Lux measuring»), уровень в % остаётся в атрибуте `level`. Датчик движения сообщает уровень движения (0–100 %): движением считается уровень выше порога из настроек (по умолчанию 15 %); по желанию для каждого датчика движения добавляется датчик уровня в %. ИК-передатчики и приёмники, пульты, камеры (rtsp), домофоны, колонки и микрофоны в HA не добавляются.
+Датчик освещённости Larnitech хранит относительный уровень (0–100 %); в HA он показывается в люксах по формуле приложения Larnitech (как в приложении с включённым «Lux measuring»), уровень в % остаётся в атрибуте `level`. Датчик движения сообщает уровень движения (0–100 %): движением считается уровень выше порога из настроек (по умолчанию 15 %); по желанию для каждого датчика движения добавляется датчик уровня в %. ИК-передатчики и приёмники, пульты, камеры (rtsp), домофоны, колонки и микрофоны в HA не добавляются. Системные датчики (отмеченные в проекте `system="yes"`: температуры и напряжения модулей, токи моторов, загрузка процессора, элементы плагина погоды) добавляются только при включённой настройке «Добавить системные датчики».
 
 Установка: HACS → поиск **Larnitech** (когда интеграция появится в списке HACS) → установить → перезапустить HA → Настройки → Устройства и службы → Добавить интеграцию → Larnitech. Адрес, порт и ключ API показаны в LT Setup: Плагины → Home Assistant.
 

@@ -16,6 +16,9 @@ CONF_MOTION_THRESHOLD = "motion_threshold"
 DEFAULT_MOTION_THRESHOLD = 15
 # also show the motion level of each motion sensor as a sensor in %
 CONF_MOTION_LEVEL = "motion_level"
+# also add sensors marked system="yes" in the project (module temperatures and supply voltages, CPU usage
+# and load, motor currents, weather plugin items); off by default
+CONF_SYSTEM_SENSORS = "system_sensors"
 
 EVENT_LARNITECH = "larnitech_official_event"
 
@@ -65,3 +68,9 @@ SKIP_TYPES = {
     "com-port", "goog-control", "ir-transmitter", "ir-receiver", "remote-control", "rtsp", "intercom",
     "speaker", "mic", "security-card-reader", "prf", "panel1", "low-level", "import-script",
 }
+
+# kinds that only show values: hidden when the element is a system element (CONF_SYSTEM_SENSORS)
+SYSTEM_SENSOR_KINDS = (
+    SENSOR_TYPES | BINARY_SENSOR_TYPES | VIRTUAL_SENSOR_TYPES | TEXT_TYPES | SUN_TYPES | WEATHER_TYPES
+    | {"motion-sensor", "security", "json"}
+)

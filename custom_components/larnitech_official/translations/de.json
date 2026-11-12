@@ -41,13 +41,15 @@
           "ignored_types": "Elementtypen ausblenden",
           "export_entities": "Home-Assistant-Geräte in Larnitech",
           "motion_threshold": "Bewegungsschwelle",
-          "motion_level": "Sensoren für den Bewegungspegel"
+          "motion_level": "Sensoren für den Bewegungspegel",
+          "system_sensors": "Systemsensoren hinzufügen"
         },
         "data_description": {
           "ignored_types": "Elemente dieser Typen werden nicht in Home Assistant angelegt.",
           "export_entities": "Diese Entitäten werden zu Larnitech-Elementen: Sie erscheinen in der Larnitech-App und können in Larnitech-Skripten und Blockly verwendet werden. Befehle aus Larnitech steuern sie hier.",
           "motion_threshold": "Ein Larnitech-Bewegungsmelder meldet einen Bewegungspegel von 0 bis 100 %. Ein Pegel über diesem Wert gilt als Bewegung. Standard 15 %.",
-          "motion_level": "Für jeden Bewegungsmelder zusätzlich einen Sensor mit dem Bewegungspegel in % anlegen, für eigene Automationen."
+          "motion_level": "Für jeden Bewegungsmelder zusätzlich einen Sensor mit dem Bewegungspegel in % anlegen, für eigene Automationen.",
+          "system_sensors": "Auch die im Projekt als Systemelemente markierten Sensoren hinzufügen: Modultemperaturen und Versorgungsspannungen, Motorströme, CPU-Auslastung und -Last, Elemente des Wetter-Plugins. Standardmäßig aus."
         },
         "description": "Wählen Sie, welche Home-Assistant-Entitäten zu Larnitech-Elementen werden.{problems}"
       },
