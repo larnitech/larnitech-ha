@@ -23,7 +23,7 @@ Local integration of the [Larnitech](https://larnitech.com) smart home controlle
   | binary_sensor | motion-sensor, leak-sensor or door-sensor |
   | sensor: temperature, humidity, CO₂ | temperature-, humidity-, co2-sensor |
   | sensor: illuminance (lx) | virtual text, for example "850 lx" (the illumination sensor is a relative level in %, at most 127.99) |
-  | sensor: power, voltage, frequency | power-sensor (W), voltage-sensor (V), freq-sensor (Hz) |
+  | sensor: power, voltage, current, frequency | power-sensor (kW), voltage-sensor (V), current-sensor (mA), freq-sensor (Hz); a value above 255.99 kW / V / Hz (or below 0) is shown as text |
   | sensor: battery or unit % | percent-sensor (0–100 %) |
   | other numeric sensor, input_number, number | virtual sensor with the unit (−128…127.99), else text |
   | energy, non-numeric sensor, input_text, input_select, select, device_tracker, person | virtual text (value and unit) |

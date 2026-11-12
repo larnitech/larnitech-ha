@@ -108,10 +108,11 @@
         "humidity-sensor": "Feuchtesensor",
         "illumination-sensor": "Helligkeitssensor (Larnitech-Skala; die App zeigt Lux bis 2000, wenn „Lux-Messung“ an ist)",
         "co2-sensor": "CO₂-Sensor",
-        "power-sensor": "Leistungssensor (W)",
-        "voltage-sensor": "Spannungssensor (V)",
-        "freq-sensor": "Frequenzsensor (Hz)",
-        "consumption-sensor": "Energiezähler (ganze kWh)"
+        "power-sensor": "Leistungssensor (0–255,99 kW)",
+        "voltage-sensor": "Spannungssensor (0–255,99 V)",
+        "freq-sensor": "Frequenzsensor (0–255,99 Hz)",
+        "consumption-sensor": "Energiezähler (0–255,99 kWh)",
+        "current-sensor": "Stromsensor (mA)"
       }
     }
   },

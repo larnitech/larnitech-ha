@@ -75,17 +75,23 @@ def _num(value: Any) -> float | None:
 
 # Larnitech element types for values that have no dedicated element. Checked on a controller:
 # percent-sensor and float-sensor take a 2-byte 8.8 value like humidity (the firmware's own CPU usage
-# and CPU load elements use them), power/voltage/freq/consumption take a plain 16-bit integer,
-# a virtual sensor takes a signed 8.8 value (-128..127.99) and shows its "dim" unit, and a virtual
-# text element shows any string.
+# and CPU load elements use them), a virtual sensor takes a signed 8.8 value (-128..127.99) and shows its
+# "dim" unit, and a virtual text element shows any string.
 VIRTUAL_SENSOR = "virtual-sensor"
 VIRTUAL_TEXT = "virtual-text"
-INT_SENSORS = {
-    "power-sensor": {"W": 1, "kW": 1000, "MW": 1_000_000, "mW": 0.001},
+# Power, voltage, frequency and consumption elements hold an unsigned 8.8 value (1/256 units, 0..255.99)
+# in the unit the Larnitech app shows: kW, V, Hz, kWh (the modules store their supply voltage this way,
+# the app divides by 256). Factor from the Home Assistant unit to the app's unit.
+FIXED88_SENSORS = {
+    "power-sensor": {"W": 0.001, "kW": 1, "MW": 1000, "mW": 0.000001},
     "voltage-sensor": {"V": 1, "kV": 1000, "mV": 0.001},
     "freq-sensor": {"Hz": 1, "kHz": 1000, "MHz": 1_000_000},
     "consumption-sensor": {"kWh": 1, "Wh": 0.001, "MWh": 1000},
 }
+FIXED88_MAX = 255.99
+# a current element holds the plain number of mA (as the app shows it)
+CURRENT_MA = {"mA": 1, "A": 1000, "kA": 1_000_000}
+CURRENT_MAX = 0xFFFE
 DEDICATED_SENSORS = {
     "temperature": "temperature-sensor",
     "humidity": "humidity-sensor",
@@ -93,6 +99,7 @@ DEDICATED_SENSORS = {
     "carbon_dioxide": "co2-sensor",
     "power": "power-sensor",
     "voltage": "voltage-sensor",
+    "current": "current-sensor",
     "frequency": "freq-sensor",
     "energy": "consumption-sensor",
 }
@@ -194,6 +201,26 @@ def type_choices(state: State) -> list[str]:
     return ([dedicated] if dedicated else []) + GENERIC_NUMERIC
 
 
+def scaled(kind: str, state: State) -> float | None:
+    """The entity's value in the unit of a power, voltage, frequency, consumption or current element."""
+    value = _num(state.state)
+    if value is None:
+        return None
+    if kind == "current-sensor":
+        return value * CURRENT_MA.get(_unit(state), 1)
+    return value * FIXED88_SENSORS[kind].get(_unit(state), 1)
+
+
+def fits(kind: str, state: State) -> bool:
+    """Whether the current value fits the element (otherwise it is shown as text)."""
+    if kind not in FIXED88_SENSORS and kind != "current-sensor":
+        return True
+    value = scaled(kind, state)
+    if value is None:
+        return True  # no value yet
+    return 0 <= value <= (CURRENT_MAX if kind == "current-sensor" else FIXED88_MAX)
+
+
 def default_numeric(state: State) -> str:
     """Kind for a number that has no dedicated Larnitech element."""
     if state.attributes.get(ATTR_DEVICE_CLASS) == "battery" or _unit(state) == "%":
@@ -229,7 +256,9 @@ def larnitech_type(state: State) -> str | None:
         if not is_numeric(state):
             return VIRTUAL_TEXT if domain == "sensor" else None
         if domain == "sensor" and dclass in DEDICATED_SENSORS and dclass not in TEXT_BY_DEFAULT:
-            return DEDICATED_SENSORS[dclass]
+            kind = DEDICATED_SENSORS[dclass]
+            # too large (or negative) for the element: text, like other large numbers
+            return kind if fits(kind, state) else VIRTUAL_TEXT
         if domain == "sensor" and dclass in TEXT_BY_DEFAULT:
             return VIRTUAL_TEXT
         return default_numeric(state)
@@ -371,11 +400,14 @@ def encode(kind: str, state: State, prev: list[int] | None = None) -> str | None
     if kind == VIRTUAL_TEXT:
         return _text(state)
     value = _num(s)
-    if kind in INT_SENSORS:
+    if kind in FIXED88_SENSORS:
+        value = scaled(kind, state)
+        return None if value is None else _hex(_fixed88(value, 0, FIXED88_MAX))
+    if kind == "current-sensor":
+        value = scaled(kind, state)
         if value is None:
             return None
-        value *= INT_SENSORS[kind].get(_unit(state), 1)
-        v = max(0, min(0xFFFE, round(value)))
+        v = max(0, min(CURRENT_MAX, round(value)))
         return _hex([v & 0xFF, v >> 8])
     if kind == "percent-sensor":
         return None if value is None else _hex(_fixed88(value, 0, 100))
@@ -611,6 +643,9 @@ class EntityBridge:
                 # exported by 1.2.2 or older, shown in % and capped at 127.99: becomes the new default.
                 # The element keeps its address (same addr-key).
                 return larnitech_type(state) or known["type"]
+            if state is not None and not fits(known["type"], state):
+                # chosen automatically and the value outgrew the element: text from now on (same address)
+                return VIRTUAL_TEXT
             return known["type"]
         return larnitech_type(state) if state is not None else (known or {}).get("type")
 

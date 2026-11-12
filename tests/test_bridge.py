@@ -169,6 +169,49 @@ def test_lux_as_illumination_sensor():
         assert round(level_to_lux(_parse_temp(*_parse_hex(encode("illumination-sensor", st))))) == lux, lux
 
 
+# --- power, voltage, frequency, consumption, current: the scale the app reads (1.2.5) ---
+
+def sensor(value, unit, dclass):
+    return State("sensor.meter", str(value), {"unit_of_measurement": unit, "device_class": dclass})
+
+
+def word(hexstatus):
+    b = _parse_hex(hexstatus)
+    return b[0] | b[1] << 8
+
+
+def test_power_in_kw_fixed88():
+    # 1830 W -> 1.83 kW, the app divides the word by 256
+    st = sensor(1830, "W", "power")
+    assert larnitech_type(st) == "power-sensor"
+    assert word(encode("power-sensor", st, [])) == round(1.83 * 256)
+    assert word(encode("power-sensor", sensor(2.5, "kW", "power"), [])) == 640
+
+
+def test_voltage_frequency_consumption():
+    assert word(encode("voltage-sensor", sensor(230.4, "V", "voltage"), [])) == round(230.4 * 256)
+    assert word(encode("voltage-sensor", sensor(12000, "mV", "voltage"), [])) == 12 * 256
+    assert word(encode("freq-sensor", sensor(50, "Hz", "frequency"), [])) == 50 * 256
+    assert word(encode("consumption-sensor", sensor(1500, "Wh", "energy"), [])) == round(1.5 * 256)
+
+
+def test_current_in_ma():
+    st = sensor(1.25, "A", "current")
+    assert larnitech_type(st) == "current-sensor"
+    assert word(encode("current-sensor", st, [])) == 1250
+    assert word(encode("current-sensor", sensor(300, "mA", "current"), [])) == 300
+
+
+def test_too_large_falls_back_to_text():
+    # 300 kW, 400 V and negative power do not fit 0..255.99: shown as text
+    assert larnitech_type(sensor(300000, "W", "power")) == VIRTUAL_TEXT
+    assert larnitech_type(sensor(400, "V", "voltage")) == VIRTUAL_TEXT
+    assert larnitech_type(sensor(-500, "W", "power")) == VIRTUAL_TEXT
+    assert larnitech_type(sensor(70, "A", "current")) == VIRTUAL_TEXT
+    # a chosen element keeps its type: the value is capped
+    assert word(encode("power-sensor", sensor(300000, "W", "power"), [])) == round(255.99 * 256)
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):
