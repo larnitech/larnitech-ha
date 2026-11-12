@@ -12,10 +12,12 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .api import LarnitechAuthError, LarnitechClient, LarnitechError
 from .bridge import EntityBridge
 from .const import APP_ID, CONF_EXPORT_ENTITIES, CONF_EXPORT_TYPES, CONF_KEY, CONF_SERIAL, DOMAIN, MANUFACTURER
+from .handover import async_setup_hand_over
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +48,18 @@ class LarnitechData:
 
 
 type LarnitechConfigEntry = ConfigEntry[LarnitechData]
+
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """When version 2.0.0 (domain larnitech) is installed next to this one, hand the controllers over to it."""
+    try:
+        async_setup_hand_over(hass)
+    except Exception:  # noqa: BLE001 - never stop the set-up
+        _LOGGER.exception("Could not schedule the check for Larnitech 2.0.0")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LarnitechConfigEntry) -> bool:
